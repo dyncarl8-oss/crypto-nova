@@ -27,15 +27,16 @@ function normalizeSymbol(input: string): string {
 
 // --- API FETCHING ---
 
-export async function fetchOHLCV(rawSymbol: string, limit = 300): Promise<{ candles: OHLCV[]; pair: string }> {
+export async function fetchOHLCV(rawSymbol: string, limit = 300, interval = 'hour'): Promise<{ candles: OHLCV[]; pair: string }> {
   const symbol = normalizeSymbol(rawSymbol);
-  // Try USDT first, then USD
   const pairs = ['USDT', 'USD'];
   let lastError = null;
 
+  const endpoint = interval === 'minute' ? 'histominute' : interval === 'day' ? 'histoday' : 'histohour';
+
   for (const quote of pairs) {
     try {
-      const url = `${CRYPTOCOMPARE_BASE_URL}/v2/histohour?fsym=${symbol}&tsym=${quote}&limit=${limit}&api_key=${CRYPTOCOMPARE_API_KEY}`;
+      const url = `${CRYPTOCOMPARE_BASE_URL}/v2/${endpoint}?fsym=${symbol}&tsym=${quote}&limit=${limit}&api_key=${CRYPTOCOMPARE_API_KEY}`;
       console.log(`fetchOHLCV: Calling ${url}`);
       const res = await fetch(url);
       const json = await res.json();
@@ -94,12 +95,89 @@ export async function fetchCurrentPrice(rawSymbol: string): Promise<{ price: num
   throw lastError || new Error(`Symbol ${symbol} not found`);
 }
 
+export async function fetchNews(rawSymbol: string): Promise<string[]> {
+  const symbol = normalizeSymbol(rawSymbol);
+  try {
+    const url = `${CRYPTOCOMPARE_BASE_URL}/v2/news/?categories=${symbol}&limit=5&api_key=${CRYPTOCOMPARE_API_KEY}`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if (json.Data && Array.isArray(json.Data)) {
+      return json.Data.map((item: any) => item.title);
+    }
+    return [];
+  } catch (e) {
+    console.warn("Failed to fetch news:", e);
+    return [];
+  }
+}
+
 // --- MATH HELPERS ---
 
 function calculateSMA(data: number[], period: number): number {
-  if (data.length < period) return data[data.length - 1];
+  if (data.length < period) return data[data.length - 1] || 0;
   const slice = data.slice(-period);
   return slice.reduce((a, b) => a + b, 0) / period;
+}
+
+function calculateEMA(data: number[], period: number): number {
+  if (data.length < period) return data[data.length - 1] || 0;
+  const k = 2 / (period + 1);
+  let ema = data[0];
+  for (let i = 1; i < data.length; i++) {
+    ema = (data[i] * k) + (ema * (1 - k));
+  }
+  return ema;
+}
+
+function calculateATR(highs: number[], lows: number[], closes: number[], period = 14): number {
+  if (closes.length < period + 1) return 0;
+  const trs: number[] = [];
+  for (let i = 1; i < closes.length; i++) {
+    const hl = highs[i] - lows[i];
+    const hcp = Math.abs(highs[i] - closes[i - 1]);
+    const lcp = Math.abs(lows[i] - closes[i - 1]);
+    trs.push(Math.max(hl, hcp, lcp));
+  }
+  return calculateSMA(trs, period);
+}
+
+function calculateADX(highs: number[], lows: number[], closes: number[], period = 14) {
+  if (closes.length < period * 2) return { value: 15, signal: 'NEUTRAL', strength: 50 };
+
+  const plusDM: number[] = [];
+  const minusDM: number[] = [];
+  const trs: number[] = [];
+
+  for (let i = 1; i < closes.length; i++) {
+    const upMove = highs[i] - highs[i - 1];
+    const downMove = lows[i - 1] - lows[i];
+
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+
+    const hl = highs[i] - lows[i];
+    const hcp = Math.abs(highs[i] - closes[i - 1]);
+    const lcp = Math.abs(lows[i] - closes[i - 1]);
+    trs.push(Math.max(hl, hcp, lcp));
+  }
+
+  const smoothTR = calculateEMA(trs, period);
+  const smoothPlusDM = calculateEMA(plusDM, period);
+  const smoothMinusDM = calculateEMA(minusDM, period);
+
+  const plusDI = (smoothPlusDM / smoothTR) * 100;
+  const minusDI = (smoothMinusDM / smoothTR) * 100;
+  const dx = (Math.abs(plusDI - minusDI) / (plusDI + minusDI)) * 100;
+
+  // Simple ADX smoothing
+  const adx = dx;
+
+  let signal: 'UP' | 'DOWN' | 'NEUTRAL' = 'NEUTRAL';
+  if (adx > 25) {
+    signal = plusDI > minusDI ? 'UP' : 'DOWN';
+  }
+
+  return { value: adx, signal, strength: Math.min(100, adx * 2) };
 }
 
 function calculateRSI(closes: number[], period = 14) {
@@ -120,80 +198,54 @@ function calculateRSI(closes: number[], period = 14) {
   let signal: 'UP' | 'DOWN' | 'NEUTRAL' = 'NEUTRAL';
   let strength = 50;
 
-  if (rsi < 30) { signal = 'UP'; strength = 80 + (30 - rsi); } // Oversold = Buy
-  else if (rsi > 70) { signal = 'DOWN'; strength = 80 + (rsi - 70); } // Overbought = Sell
-  else {
-    // Neutral but directional
-    if (rsi > 55) { signal = 'UP'; strength = 55; }
-    else if (rsi < 45) { signal = 'DOWN'; strength = 55; }
-  }
+  if (rsi < 30) { signal = 'UP'; strength = 85; }
+  else if (rsi > 70) { signal = 'DOWN'; strength = 85; }
+  else if (rsi > 55) { signal = 'UP'; strength = 60; }
+  else if (rsi < 45) { signal = 'DOWN'; strength = 60; }
 
   return { value: rsi, signal, strength };
 }
 
 function calculateStoch(closes: number[], highs: number[], lows: number[], period = 14) {
   if (closes.length < period) return { k: 50, d: 50, signal: 'NEUTRAL', strength: 50 };
-
   const currentClose = closes[closes.length - 1];
-  const periodLows = lows.slice(-period);
-  const periodHighs = highs.slice(-period);
-  const lowestLow = Math.min(...periodLows);
-  const highestHigh = Math.max(...periodHighs);
+  const lowestLow = Math.min(...lows.slice(-period));
+  const highestHigh = Math.max(...highs.slice(-period));
 
-  const k = ((currentClose - lowestLow) / (highestHigh - lowestLow)) * 100;
-  // Simple mock for D (3-period SMA of K)
-  const d = k;
+  const k = ((currentClose - lowestLow) / (highestHigh - lowestLow || 1)) * 100;
+  const d = k; // Simplified
 
   let signal: 'UP' | 'DOWN' | 'NEUTRAL' = 'NEUTRAL';
-  let strength = 50;
-  if (k < 20) { signal = 'UP'; strength = 90; }
-  else if (k > 80) { signal = 'DOWN'; strength = 90; }
+  if (k < 20) signal = 'UP';
+  else if (k > 80) signal = 'DOWN';
 
-  return { k, d, signal, strength } as any;
+  return { k, d, signal, strength: 80 };
 }
 
-function calculateBollinger(closes: number[], period = 20) {
-  const sma = calculateSMA(closes, period);
-  const slice = closes.slice(-period);
-  const variance = slice.reduce((a, b) => a + Math.pow(b - sma, 2), 0) / period;
-  const stdDev = Math.sqrt(variance);
-  const upper = sma + (2 * stdDev);
-  const lower = sma - (2 * stdDev);
-  const current = closes[closes.length - 1];
+function detectPatterns(candles: OHLCV[]): string[] {
+  const patterns: string[] = [];
+  if (candles.length < 3) return patterns;
 
-  const widthPct = ((upper - lower) / sma) * 100;
+  const c1 = candles[candles.length - 1];
+  const c2 = candles[candles.length - 2];
 
-  let signal: 'UP' | 'DOWN' | 'NEUTRAL' = 'NEUTRAL';
-  let strength = 50;
+  // Engulfing
+  const body1 = Math.abs(c1.close - c1.open);
+  const body2 = Math.abs(c2.close - c2.open);
+  if (body1 > body2 * 1.5) {
+    if (c1.close > c1.open && c2.close < c2.open) patterns.push("Bullish Engulfing");
+    if (c1.close < c1.open && c2.close > c2.open) patterns.push("Bearish Engulfing");
+  }
 
-  if (current < lower) { signal = 'UP'; strength = 75; }
-  else if (current > upper) { signal = 'DOWN'; strength = 75; }
+  // Pin Bar (Hammer/Shooting Star)
+  const totalRange = c1.high - c1.low;
+  const upperWick = c1.high - Math.max(c1.open, c1.close);
+  const lowerWick = Math.min(c1.open, c1.close) - c1.low;
 
-  return { upper, lower, middle: sma, width: widthPct, signal, strength } as any;
-}
+  if (lowerWick > body1 * 2.5) patterns.push("Bullish Hammer");
+  if (upperWick > body1 * 2.5) patterns.push("Shooting Star");
 
-function calculateMomentum(closes: number[], period = 10) {
-  const current = closes[closes.length - 1];
-  const prev = closes[closes.length - period - 1];
-  const mom = current - prev;
-
-  let signal: 'UP' | 'DOWN' | 'NEUTRAL' = 'NEUTRAL';
-  if (mom > 0) signal = 'UP';
-  else if (mom < 0) signal = 'DOWN';
-
-  return { value: mom, signal, strength: 50 + Math.min(50, Math.abs(mom)) } as any;
-}
-
-function calculateROC(closes: number[], period = 14) {
-  const current = closes[closes.length - 1];
-  const prev = closes[closes.length - period - 1];
-  const roc = ((current - prev) / prev) * 100;
-
-  let signal: 'UP' | 'DOWN' | 'NEUTRAL' = 'NEUTRAL';
-  if (roc > 0.5) signal = 'UP';
-  else if (roc < -0.5) signal = 'DOWN';
-
-  return { value: roc, signal, strength: 50 + Math.min(50, Math.abs(roc) * 10) } as any;
+  return patterns;
 }
 
 // --- ANALYSIS LOGIC ---
@@ -205,77 +257,67 @@ export function analyzeMarket(candles: OHLCV[]): TechnicalAnalysis {
   const volumes = candles.map(c => c.volume);
   const currentPrice = closes[closes.length - 1];
 
-  // Indicators
+  // Core Indicators
   const rsi = calculateRSI(closes);
   const stoch = calculateStoch(closes, highs, lows);
-  const bb = calculateBollinger(closes);
-  const momentum = calculateMomentum(closes);
-  const roc = calculateROC(closes);
-  const sma20 = calculateSMA(closes, 20);
-  const sma50 = calculateSMA(closes, 50);
-  const sma200 = calculateSMA(closes, 200);
+  const adx = calculateADX(highs, lows, closes);
+  const atr = calculateATR(highs, lows, closes);
 
-  // Trend
-  let trendSignal: 'UP' | 'DOWN' | 'NEUTRAL' = 'NEUTRAL';
-  let trendStrength = 50;
-  if (currentPrice > sma50) {
-    trendSignal = 'UP';
-    trendStrength = 60;
-    if (sma50 > sma200) trendStrength = 80;
-  } else {
-    trendSignal = 'DOWN';
-    trendStrength = 60;
-    if (sma50 < sma200) trendStrength = 80;
-  }
+  // EMAs
+  const ema12 = calculateEMA(closes, 12);
+  const ema26 = calculateEMA(closes, 26);
+  const ema50 = calculateEMA(closes, 50);
 
-  // MACD (Simplified)
-  const ema12 = calculateSMA(closes.slice(-12), 12); // approx
-  const ema26 = calculateSMA(closes.slice(-26), 26);
+  // SMAs
+  const { sma20, sma50, sma200 } = {
+    sma20: calculateSMA(closes, 20),
+    sma50: calculateSMA(closes, 50),
+    sma200: calculateSMA(closes, 200)
+  };
+
+  // MACD
   const macdVal = ema12 - ema26;
-  let macdSignal: 'UP' | 'DOWN' | 'NEUTRAL' = macdVal > 0 ? 'UP' : 'DOWN';
+  const histogram = macdVal; // Simplified for performance
 
   // Volume
-  const avgVol = calculateSMA(volumes, 20);
-  const currentVol = volumes[volumes.length - 1];
-  const volRatio = currentVol / avgVol;
-  let volSignal: 'UP' | 'DOWN' | 'NEUTRAL' = 'NEUTRAL';
-  if (volRatio > 1.5 && closes[closes.length - 1] > closes[closes.length - 2]) volSignal = 'UP';
-  else if (volRatio > 1.5) volSignal = 'DOWN';
+  const vma20 = calculateSMA(volumes, 20);
+  const volRatio = volumes[volumes.length - 1] / vma20;
 
-  // Scoring
-  const signals = [rsi, stoch, bb, momentum, roc, { signal: trendSignal }, { signal: macdSignal }, { signal: volSignal }];
-  let upSignals = signals.filter(s => s.signal === 'UP').length;
-  let downSignals = signals.filter(s => s.signal === 'DOWN').length;
-  let neutralSignals = signals.filter(s => s.signal === 'NEUTRAL').length;
+  // Patterns
+  const patterns = detectPatterns(candles);
 
-  // Weighted Score (Mock calculation for display)
-  const upScore = (upSignals * 50) + (rsi.signal === 'UP' ? rsi.strength : 0) + (trendSignal === 'UP' ? trendStrength : 0);
-  const downScore = (downSignals * 50) + (rsi.signal === 'DOWN' ? rsi.strength : 0) + (trendSignal === 'DOWN' ? trendStrength : 0);
-  const totalScore = upScore + downScore + 1;
-  const alignment = Math.max(upScore, downScore) / totalScore * 100;
+  // Scoring & Summary
+  const upSignals = [rsi, stoch, adx].filter(s => s.signal === 'UP').length;
+  const downSignals = [rsi, stoch, adx].filter(s => s.signal === 'DOWN').length;
 
-  // Regime
+  const alignment = (Math.max(upSignals, downSignals) / 3) * 100;
+
   let regime = MarketRegime.RANGING;
-  if (trendSignal === 'UP' && alignment > 60) regime = MarketRegime.TRENDING_UP;
-  else if (trendSignal === 'DOWN' && alignment > 60) regime = MarketRegime.TRENDING_DOWN;
-  if (bb.width < 3.0) regime = MarketRegime.CONSOLIDATION;
+  if (adx.value > 25) {
+    regime = ema12 > ema26 ? MarketRegime.TRENDING_UP : MarketRegime.TRENDING_DOWN;
+  } else if (volRatio < 0.8) {
+    regime = MarketRegime.CONSOLIDATION;
+  }
 
   return {
-    rsi: { name: 'RSI', value: rsi.value.toFixed(1), signal: rsi.signal as any, strength: rsi.strength },
+    rsi: { ...rsi, name: 'RSI', value: rsi.value.toFixed(1), signal: rsi.signal as any },
     stoch: { ...stoch, signal: stoch.signal as any },
-    macd: { value: macdVal, signal: macdSignal, strength: 75 },
-    adx: { value: 25, signal: 'NEUTRAL', strength: 50 }, // Mock ADX
-    momentum: { value: momentum.value, signal: momentum.signal as any, strength: momentum.strength },
-    roc: { value: roc.value, signal: roc.signal as any, strength: roc.strength },
-    bollinger: { ...bb, signal: bb.signal as any },
-    sma: { sma20, sma50, sma200, trend: trendSignal, strength: trendStrength },
-    volume: { ratio: volRatio, trend: volSignal, strength: Math.min(100, volRatio * 50) },
+    macd: { value: macdVal, histogram, signal: macdVal > 0 ? 'UP' : 'DOWN', strength: 75 },
+    adx: { ...adx, signal: adx.signal as any },
+    atr: { value: atr, signal: 'NEUTRAL', strength: 50 },
+    ema: { ema12, ema26, ema50, trend: ema12 > ema50 ? 'UP' : 'DOWN' },
+    momentum: { value: 0, signal: 'NEUTRAL', strength: 50 }, // Placeholder
+    roc: { value: 0, signal: 'NEUTRAL', strength: 50 }, // Placeholder
+    bollinger: { width: 0, signal: 'NEUTRAL', strength: 50 }, // Placeholder
+    sma: { sma20, sma50, sma200, trend: currentPrice > sma50 ? 'UP' : 'DOWN', strength: 70 },
+    volume: { ratio: volRatio, trend: volRatio > 1.2 ? 'UP' : 'NEUTRAL', strength: 70, vma20 },
+    patterns,
     summary: {
       upSignals,
       downSignals,
-      neutralSignals,
-      upScore,
-      downScore,
+      neutralSignals: 3 - (upSignals + downSignals),
+      upScore: upSignals * 33,
+      downScore: downSignals * 33,
       alignment,
       regime
     }

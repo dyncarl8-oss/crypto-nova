@@ -229,12 +229,18 @@ export default function App() {
       // Step 1: Data Collection (Slow, realistic delay)
       console.log(`Analysis Step 1: Fetching data for ${symbol}`);
       const t0 = performance.now();
-      const [priceData, ohlcvData] = await Promise.all([
+
+      const { fetchNews } = await import('./services/marketService');
+
+      const [priceData, ohlcvData, anchorData, news] = await Promise.all([
         fetchCurrentPrice(symbol),
-        fetchOHLCV(symbol)
+        fetchOHLCV(symbol, 300, 'hour'), // Entry (1H)
+        fetchOHLCV(symbol, 100, 'day'),   // Anchor (Daily for 1H entry)
+        fetchNews(symbol)
       ]);
       console.log(`Analysis Step 1: Data received for ${symbol}. Pair: ${priceData.pair}`);
       const candles = ohlcvData.candles;
+      const anchorCandles = anchorData.candles;
 
       if (!candles || candles.length === 0) {
         throw new Error(`Market data for ${symbol} is currently empty or unavailable.`);
@@ -258,6 +264,7 @@ export default function App() {
       // Step 2: Technical Analysis
       await delay(2000); // 2s delay to "compute indicators"
       const technicals = analyzeMarket(candles);
+      const anchorTechnicals = analyzeMarket(anchorCandles);
       const t2 = performance.now();
 
       setMarketState(prev => ({
@@ -279,7 +286,13 @@ export default function App() {
 
       // Step 4: AI Deep Analysis (Async)
       // Fetching happens here. The UI will show "ThinkingLoader" now.
-      const deepAnalysis = await geminiService.generateDeepAnalysis(symbol, technicals, priceData.price);
+      const deepAnalysis = await geminiService.generateDeepAnalysis(
+        symbol,
+        technicals,
+        priceData.price,
+        anchorTechnicals,
+        news
+      );
 
       const t4 = performance.now();
       const aiTime = parseFloat(((t4 - t3) / 1000).toFixed(1));
@@ -701,8 +714,8 @@ export default function App() {
 
         <div className="h-16 px-6 flex items-center justify-between z-30 pointer-events-none">
           <div className="flex items-center gap-4 pointer-events-auto">
-            <button onClick={() => setShowLog(!showLog)} className="p-2 bg-slate-900/50 border border-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors pointer-events-auto">
-              {showLog ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
+            <button onClick={() => setShowLog(!showLog)} className="p-1 text-slate-500 hover:text-white transition-all duration-300 hover:bg-white/5 rounded-md pointer-events-auto flex items-center justify-center">
+              {showLog ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
             </button>
 
             {whopUser && (

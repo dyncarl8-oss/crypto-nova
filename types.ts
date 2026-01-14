@@ -38,8 +38,15 @@ export interface IndicatorValue {
 export interface TechnicalAnalysis {
   rsi: IndicatorValue;
   stoch: { k: number; d: number; signal: 'UP' | 'DOWN' | 'NEUTRAL'; strength: number };
-  macd: { value: number; signal: 'UP' | 'DOWN' | 'NEUTRAL'; strength: number };
+  macd: { value: number; histogram: number; signal: 'UP' | 'DOWN' | 'NEUTRAL'; strength: number };
   adx: { value: number; signal: 'UP' | 'DOWN' | 'NEUTRAL'; strength: number };
+  atr: { value: number; signal: 'UP' | 'DOWN' | 'NEUTRAL'; strength: number };
+  ema: {
+    ema12: number;
+    ema26: number;
+    ema50: number;
+    trend: 'UP' | 'DOWN' | 'NEUTRAL';
+  };
   momentum: { value: number; signal: 'UP' | 'DOWN' | 'NEUTRAL'; strength: number };
   roc: { value: number; signal: 'UP' | 'DOWN' | 'NEUTRAL'; strength: number };
   bollinger: {
@@ -58,7 +65,9 @@ export interface TechnicalAnalysis {
     ratio: number;
     trend: 'UP' | 'DOWN' | 'NEUTRAL';
     strength: number;
+    vma20: number;
   };
+  patterns: string[];
   summary: {
     upSignals: number;
     downSignals: number;
@@ -89,6 +98,12 @@ export interface DeepAnalysisResult {
       stopLoss: string;
       target: string;
     };
+    riskReward?: {
+      ratio: number;
+      recommendation: string;
+    };
+    marketNarrative?: string;
+    btcCorrelation?: string;
   };
 }
 

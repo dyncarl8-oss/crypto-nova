@@ -63,29 +63,49 @@ const IndicatorCard = ({ name, signal, value, subtext, strength }: any) => {
 
 // --- TYPEWRITER COMPONENTS ---
 
-const ThinkingLoader = () => {
+const ThinkingLoader = ({ symbol }: { symbol?: string }) => {
     const [text, setText] = useState("Initializing neural pathways...");
+    const [dataStream, setDataStream] = useState<string[]>([]);
+
+    const isBTC = symbol?.includes('BTC');
+    const isETH = symbol?.includes('ETH');
+
     const messages = [
         "Analyzing historical patterns...",
         "Evaluating market sentiment...",
         "Calculating risk probabilities...",
         "Synthesizing technical signals...",
-        "Formulating trade hypothesis..."
+        isBTC ? "Analyzing Global Liquidity & Dominance..." :
+            isETH ? "Evaluating ETH/BTC Ratio Strength..." :
+                "Calculating BTC Correlation Beta...",
+        "Formulating trade hypothesis...",
+        "Scanning for liquidity walls..."
     ];
 
     useEffect(() => {
         let i = 0;
         const interval = setInterval(() => {
             setText(messages[i % messages.length]);
+            const stream = Array.from({ length: 5 }, () => (Math.random() * 100).toFixed(4));
+            setDataStream(stream);
             i++;
         }, 1500);
         return () => clearInterval(interval);
-    }, []);
+    }, [symbol]); // Reset if symbol changes
 
     return (
-        <div className="flex items-center gap-3 text-slate-500 text-xs font-mono animate-pulse py-2">
-            <Loader2 size={14} className="animate-spin" />
-            <span>{text}</span>
+        <div className="space-y-4 py-4">
+            <div className="flex items-center gap-3 text-blue-400 text-xs font-mono animate-pulse">
+                <Loader2 size={14} className="animate-spin" />
+                <span>{text}</span>
+            </div>
+            <div className="grid grid-cols-5 gap-2">
+                {dataStream.map((val, idx) => (
+                    <div key={idx} className="text-[8px] text-slate-800 font-mono truncate">
+                        {val}
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }
@@ -99,15 +119,14 @@ const TypewriterText = ({ text, delay = 0, onComplete }: { text: string, delay?:
             setHasStarted(true);
         }, delay);
         return () => clearTimeout(startTimeout);
-    }, [delay]);
+    }, [delay, text]); // Added text to deps for resets
 
     useEffect(() => {
         if (!hasStarted) return;
 
         if (visibleChars < text.length) {
-            // Typing speed: faster for longer texts to keep it snappy
-            const speed = Math.max(5, 20 - Math.min(10, text.length / 50));
-            const variance = Math.random() * 15;
+            const speed = Math.max(3, 15 - Math.min(8, text.length / 100));
+            const variance = Math.random() * 10;
 
             const timeout = setTimeout(() => {
                 setVisibleChars(prev => prev + 1);
@@ -332,7 +351,7 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
             {/* STEP 2: TECHNICAL ANALYSIS */}
             <AnalysisStep
                 title="Technical Analysis"
-                subtitle="Computing 23+ technical indicators"
+                subtitle="Computing 25+ technical indicators"
                 status={getStatus(AnalysisStage.COMPUTING_TECHNICALS)}
                 duration={timings.technicals > 0 ? `${timings.technicals}s` : undefined}
             >
@@ -341,8 +360,8 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                         <div className="grid grid-cols-2 gap-3">
                             <IndicatorCard name="RSI" signal={technicals.rsi.signal} value={technicals.rsi.value} strength={technicals.rsi.strength} subtext="Momentum" />
                             <IndicatorCard name="Stochastic" signal={technicals.stoch.signal} value={`${technicals.stoch.k.toFixed(0)}/${technicals.stoch.d.toFixed(0)}`} strength={technicals.stoch.strength} subtext="Oscillator" />
-                            <IndicatorCard name="Trend (SMA)" signal={technicals.sma.trend} value={technicals.sma.sma50.toFixed(2)} strength={technicals.sma.strength} subtext="Price vs SMA50" />
-                            <IndicatorCard name="Bollinger" signal={technicals.bollinger.signal} value={`W: ${technicals.bollinger.width.toFixed(2)}%`} strength={technicals.bollinger.strength} subtext="Volatility" />
+                            <IndicatorCard name="ADX" signal={technicals.adx.signal} value={technicals.adx.value.toFixed(1)} strength={technicals.adx.strength} subtext="Trend Strength" />
+                            <IndicatorCard name="ATR" signal="NEUTRAL" value={technicals.atr.value.toFixed(4)} strength={50} subtext="Volatility (Units)" />
                         </div>
                     </div>
                 )}
@@ -363,9 +382,20 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                             <span className="text-red-400 font-bold">{technicals.summary.downSignals} DOWN</span>
                         </div>
                         <div className="flex h-2 rounded-full overflow-hidden w-full bg-slate-800">
-                            <div style={{ width: `${(technicals.summary.upScore / (technicals.summary.upScore + technicals.summary.downScore)) * 100}%` }} className="bg-emerald-500 transition-all duration-1000" />
+                            <div style={{ width: `${(technicals.summary.upScore / (technicals.summary.upScore + technicals.summary.downScore + 1)) * 100}%` }} className="bg-emerald-500 transition-all duration-1000" />
                             <div className="flex-1 bg-red-500 transition-all duration-1000" />
                         </div>
+
+                        {technicals.patterns.length > 0 && (
+                            <div className="flex flex-wrap gap-2 pt-2">
+                                {technicals.patterns.map(p => (
+                                    <span key={p} className="text-[10px] font-bold bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded border border-purple-500/20">
+                                        {p}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+
                         <div className="flex justify-between items-center pt-2 border-t border-slate-800">
                             <span className="text-xs text-slate-500 uppercase tracking-widest">Market Regime</span>
                             <span className="text-sm font-bold text-blue-400 px-3 py-1 bg-blue-500/10 rounded border border-blue-500/20">
@@ -390,7 +420,7 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                     </div>
 
                     {!deepAnalysis ? (
-                        <ThinkingLoader />
+                        <ThinkingLoader symbol={data.symbol} />
                     ) : (
                         <ThinkingReveal
                             steps={deepAnalysis.thought_process || []}
@@ -408,104 +438,140 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                 isLast={true}
             >
                 {deepAnalysis && (
-                    <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-1 rounded-2xl border border-slate-800 animate-in fade-in zoom-in duration-500">
+                    <div className={clsx("p-1 rounded-2xl border transition-all duration-1000 animate-in fade-in zoom-in",
+                        deepAnalysis.verdict.direction === 'NEUTRAL' ? "bg-slate-900/50 border-slate-700/50" :
+                            "bg-gradient-to-br from-slate-900 to-slate-950 border-slate-800")}>
                         <div className="p-6">
+                            {/* Direction & Confidence */}
                             <div className="flex justify-between items-start mb-6">
                                 <div>
-                                    <div className="text-slate-500 text-xs uppercase tracking-widest mb-1">Direction</div>
-                                    <div className={clsx("text-4xl font-bold tracking-tight",
+                                    <div className="text-slate-500 text-[10px] uppercase tracking-widest mb-1">Execution Direction</div>
+                                    <div className={clsx("text-4xl font-bold tracking-tighter",
                                         deepAnalysis.verdict.direction === 'UP' ? "text-emerald-400" :
-                                            deepAnalysis.verdict.direction === 'DOWN' ? "text-red-400" : "text-slate-300")}>
+                                            deepAnalysis.verdict.direction === 'DOWN' ? "text-red-400" : "text-slate-400")}>
                                         {deepAnalysis.verdict.direction}
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <div className="text-slate-500 text-xs uppercase tracking-widest mb-1">Confidence</div>
-                                    <div className="text-2xl font-mono text-white">{deepAnalysis.verdict.confidence}%</div>
+                                    <div className="text-slate-500 text-[10px] uppercase tracking-widest mb-1">Conviction</div>
+                                    <div className="text-2xl font-mono text-white opacity-90">{deepAnalysis.verdict.confidence}%</div>
                                 </div>
                             </div>
 
-                            <p className="text-slate-300 text-sm leading-relaxed mb-6 border-l-2 border-slate-700 pl-4">
-                                {deepAnalysis.verdict.summary}
-                            </p>
-
-                            {deepAnalysis.verdict.targets && (
-                                <div className="grid grid-cols-3 gap-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800/50">
-                                    <div className="text-center">
-                                        <div className="text-[10px] text-slate-500 uppercase">Entry</div>
-                                        <div className="text-sm font-mono text-blue-400">{deepAnalysis.verdict.targets.entry}</div>
-                                    </div>
-                                    <div className="text-center border-l border-slate-800">
-                                        <div className="text-[10px] text-slate-500 uppercase">Target</div>
-                                        <div className="text-sm font-mono text-emerald-400">{deepAnalysis.verdict.targets.target}</div>
-                                    </div>
-                                    <div className="text-center border-l border-slate-800">
-                                        <div className="text-[10px] text-slate-500 uppercase">Stop</div>
-                                        <div className="text-sm font-mono text-red-400">{deepAnalysis.verdict.targets.stopLoss}</div>
-                                    </div>
+                            {/* Neutral Mode Warning */}
+                            {deepAnalysis.verdict.direction === 'NEUTRAL' && (
+                                <div className="mb-6 p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl flex gap-3 items-center">
+                                    <AlertTriangle className="text-blue-400 shrink-0" size={18} />
+                                    <p className="text-xs text-blue-200/70 font-mono italic">
+                                        "No actionable trade setup detected. Market symmetry suggests high risk. Standing aside."
+                                    </p>
                                 </div>
                             )}
 
-                            {/* Interactive Mini Chart Area */}
-                            <div className="h-48 w-full mt-6 relative rounded-xl overflow-hidden border border-slate-800/50 bg-slate-900/50">
+                            {/* Summary & Narrative */}
+                            <div className="space-y-4 mb-6">
+                                <p className="text-slate-300 text-sm leading-relaxed border-l-2 border-slate-700 pl-4">
+                                    {deepAnalysis.verdict.summary}
+                                </p>
+
+                                {deepAnalysis.verdict.marketNarrative && (
+                                    <div className="bg-purple-500/5 p-3 rounded-lg border border-purple-500/10">
+                                        <div className="text-[10px] text-purple-400 uppercase font-bold mb-1 tracking-tighter">Market Narrative</div>
+                                        <div className="text-xs text-slate-400 font-light italic">{deepAnalysis.verdict.marketNarrative}</div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Targets & R:R */}
+                            {deepAnalysis.verdict.targets && deepAnalysis.verdict.direction !== 'NEUTRAL' && (
+                                <div className="space-y-4 mb-6">
+                                    <div className="grid grid-cols-3 gap-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800/50">
+                                        <div className="text-center">
+                                            <div className="text-[10px] text-slate-500 uppercase">Entry</div>
+                                            <div className="text-sm font-mono text-blue-400">{deepAnalysis.verdict.targets.entry}</div>
+                                        </div>
+                                        <div className="text-center border-l border-slate-800">
+                                            <div className="text-[10px] text-slate-500 uppercase">Target</div>
+                                            <div className="text-sm font-mono text-emerald-400">{deepAnalysis.verdict.targets.target}</div>
+                                        </div>
+                                        <div className="text-center border-l border-slate-800">
+                                            <div className="text-[10px] text-slate-500 uppercase">Stop</div>
+                                            <div className="text-sm font-mono text-red-400">{deepAnalysis.verdict.targets.stopLoss}</div>
+                                        </div>
+                                    </div>
+
+                                    {deepAnalysis.verdict.riskReward && (
+                                        <div className="flex justify-between items-center px-1">
+                                            <span className="text-[10px] text-slate-500 uppercase">Risk:Reward Ratio</span>
+                                            <span className="text-xs font-mono text-white">1:{deepAnalysis.verdict.riskReward.ratio}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Chart Area */}
+                            <div className="h-40 w-full relative rounded-xl overflow-hidden border border-slate-800/50 bg-slate-900/50 mb-6 group">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <AreaChart data={data.candles}>
                                         <defs>
                                             <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor={deepAnalysis.verdict.direction === 'UP' ? '#10b981' : '#ef4444'} stopOpacity={0.2} />
-                                                <stop offset="95%" stopColor={deepAnalysis.verdict.direction === 'UP' ? '#10b981' : '#ef4444'} stopOpacity={0} />
+                                                <stop offset="5%" stopColor={deepAnalysis.verdict.direction === 'UP' ? '#10b981' : deepAnalysis.verdict.direction === 'DOWN' ? '#ef4444' : '#334155'} stopOpacity={0.2} />
+                                                <stop offset="95%" stopColor={deepAnalysis.verdict.direction === 'UP' ? '#10b981' : deepAnalysis.verdict.direction === 'DOWN' ? '#ef4444' : '#334155'} stopOpacity={0} />
                                             </linearGradient>
                                         </defs>
                                         <XAxis dataKey="time" hide />
-                                        <Tooltip
-                                            cursor={{ stroke: '#334155', strokeWidth: 1 }}
-                                            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px', fontSize: '12px' }}
-                                            itemStyle={{ color: '#e2e8f0' }}
-                                            labelFormatter={(label) => new Date(label).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                            formatter={(value: number) => [`$${value.toFixed(2)}`, 'Price']}
-                                        />
                                         <YAxis domain={['auto', 'auto']} hide />
                                         <Area
                                             type="monotone"
                                             dataKey="close"
-                                            stroke={deepAnalysis.verdict.direction === 'UP' ? '#10b981' : deepAnalysis.verdict.direction === 'DOWN' ? '#ef4444' : '#94a3b8'}
+                                            stroke={deepAnalysis.verdict.direction === 'UP' ? '#10b981' : deepAnalysis.verdict.direction === 'DOWN' ? '#ef4444' : '#475569'}
                                             fill="url(#chartGradient)"
-                                            strokeWidth={2}
+                                            strokeWidth={1.5}
                                         />
                                     </AreaChart>
                                 </ResponsiveContainer>
+                                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/20 to-transparent pointer-events-none" />
                             </div>
 
-                            {/* Key Factors & Risks Grid */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 pt-6 border-t border-slate-800/50">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <div className="p-1 rounded bg-emerald-500/10"><TrendingUp size={14} className="text-emerald-400" /></div>
-                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Key Factors</span>
+                            {/* Factors & Correlation */}
+                            <div className="space-y-6 pt-6 border-t border-slate-800/50">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <div className="p-1 rounded bg-emerald-500/10"><TrendingUp size={14} className="text-emerald-400" /></div>
+                                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Alpha Factors</span>
+                                        </div>
+                                        <ul className="space-y-2">
+                                            {deepAnalysis.observations.map((obs, i) => (
+                                                <li key={i} className="text-[11px] text-slate-400 flex items-start gap-2 leading-snug">
+                                                    <Check size={12} className="text-emerald-500 mt-0.5 shrink-0" />
+                                                    <span>{obs}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
                                     </div>
-                                    <ul className="space-y-2">
-                                        {deepAnalysis.observations.map((obs, i) => (
-                                            <li key={i} className="text-xs text-slate-300 flex items-start gap-2 leading-relaxed">
-                                                <Check size={12} className="text-emerald-500 mt-0.5 shrink-0" />
-                                                <span>{obs}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <div className="p-1 rounded bg-amber-500/10"><AlertTriangle size={14} className="text-amber-400" /></div>
-                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Risk Factors</span>
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <div className="p-1 rounded bg-amber-500/10"><AlertTriangle size={14} className="text-amber-400" /></div>
+                                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Risk Overlay</span>
+                                        </div>
+                                        <ul className="space-y-2">
+                                            {deepAnalysis.risks.map((risk, i) => (
+                                                <li key={i} className="text-[11px] text-slate-400 flex items-start gap-2 leading-snug">
+                                                    <div className="w-1 h-1 rounded-full bg-amber-500 mt-1.5 shrink-0" />
+                                                    <span>{risk}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
                                     </div>
-                                    <ul className="space-y-2">
-                                        {deepAnalysis.risks.map((risk, i) => (
-                                            <li key={i} className="text-xs text-slate-300 flex items-start gap-2 leading-relaxed">
-                                                <div className="w-1 h-1 rounded-full bg-amber-500 mt-1.5 shrink-0" />
-                                                <span>{risk}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
                                 </div>
+
+                                {deepAnalysis.verdict.btcCorrelation && (
+                                    <div className="flex items-center justify-between text-[10px] text-slate-600 border-t border-slate-800/30 pt-4">
+                                        <span className="uppercase tracking-widest font-bold">BTC Correlation Awareness</span>
+                                        <span className="italic">{deepAnalysis.verdict.btcCorrelation}</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
