@@ -41,6 +41,12 @@ export default function App() {
 
   // Synchronization Ref: Holds the resolve function for the visual animation promise
   const visualCompleteResolverRef = useRef<(() => void) | null>(null);
+  const orbStateRef = useRef(orbState);
+
+  // Sync ref with state
+  useEffect(() => {
+    orbStateRef.current = orbState;
+  }, [orbState]);
 
   // --- HELPERS ---
   const addMessage = (role: 'user' | 'ai', text: string) => {
@@ -333,8 +339,10 @@ export default function App() {
             }
 
             // Transcript handling (Input/Output)
-            const userTranscript = msg.serverContent?.inputTranscription?.text;
-            if (userTranscript) addMessage('user', userTranscript);
+            const inputTrans = msg.serverContent?.inputTranscription;
+            if (inputTrans?.text && inputTrans?.final) {
+              addMessage('user', inputTrans.text);
+            }
 
             const modelTranscript = msg.serverContent?.outputTranscription?.text;
             if (modelTranscript) currentModelResponseRef.current += modelTranscript;
@@ -435,8 +443,11 @@ export default function App() {
         const rms = Math.sqrt(sum / inputData.length);
         setVolume(Math.min(1, rms * 5));
 
-        const pcmBlob = createPcmBlob(inputData, 16000);
-        session.sendRealtimeInput({ media: pcmBlob });
+        // STRICT TURN-TAKING: Only send audio if Nova is NOT speaking or thinking
+        if (orbStateRef.current === 'listening' || orbStateRef.current === 'idle') {
+          const pcmBlob = createPcmBlob(inputData, 16000);
+          session.sendRealtimeInput({ media: pcmBlob });
+        }
       };
 
       source.connect(processor);
@@ -458,9 +469,14 @@ export default function App() {
     scriptProcessorRef.current?.disconnect();
     sourceRef.current?.disconnect();
     sessionRef.current?.close();
+
+    // FULL SESSION RESET
     setIsMicActive(false);
     setOrbState('idle');
     setIsMuted(false);
+    setMarketState(null);
+    setMessages([]);
+    setIsSystemBusy(false);
   };
 
   const toggleMute = () => {
@@ -661,13 +677,16 @@ export default function App() {
               </div>
             )}
 
-            {/* LISTENING STATE */}
+            {/* ACTIVE SESSION STATE (Orb + Dynamic Labels) */}
             {!marketState && isMicActive && (
               <div className="flex flex-col items-center justify-center h-full space-y-8 mt-[-60px]">
                 <div className="w-80 h-80 relative">
                   <VoiceOrb state={orbState} volume={volume} />
                 </div>
-                <div className="text-2xl font-light text-white tracking-widest">LISTENING...</div>
+                <div className="text-2xl font-light text-white tracking-[0.2em] uppercase animate-pulse">
+                  {orbState === 'speaking' ? 'Speaking...' :
+                    orbState === 'thinking' ? 'Thinking...' : 'Listening...'}
+                </div>
               </div>
             )}
 
