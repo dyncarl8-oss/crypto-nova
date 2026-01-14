@@ -114,7 +114,10 @@ export interface MarketState {
   volume24h: number;
   dataPoints: number;
   candles: OHLCV[];
+  news: string[];
+  systemLog: string[];
   technicals: TechnicalAnalysis | null;
+  anchorTechnicals: TechnicalAnalysis | null;
   deepAnalysis: DeepAnalysisResult | null;
   stage: AnalysisStage;
   timings: {

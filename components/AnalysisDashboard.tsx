@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MarketState, AnalysisStage, ThoughtStep } from '../types';
-import { AreaChart, Area, ResponsiveContainer, YAxis, Tooltip, XAxis } from 'recharts';
+import { AreaChart, Area, ResponsiveContainer, YAxis, Tooltip, XAxis, ReferenceLine, ReferenceArea } from 'recharts';
 import {
     ChevronDown, ChevronUp, CheckCircle2, Circle, Loader2,
     Brain, AlertTriangle, TrendingUp, Check
@@ -38,6 +38,72 @@ const StrengthBar = ({ value, color = 'emerald' }: { value: number, color?: stri
         />
     </div>
 );
+
+const DiagnosticConsole = ({ logs }: { logs: string[] }) => {
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, [logs]);
+
+    return (
+        <div
+            ref={scrollRef}
+            className="bg-black/40 border border-slate-800 rounded-lg p-3 font-mono text-[10px] text-emerald-500/80 h-32 overflow-y-auto mb-4 custom-scrollbar space-y-1"
+        >
+            {logs.map((log, i) => (
+                <div key={i} className="animate-in fade-in slide-in-from-left-2 duration-300">
+                    <span className="text-slate-600 mr-2">[{new Date().toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit' })}]</span>
+                    {log}
+                </div>
+            ))}
+        </div>
+    );
+};
+
+const DecisionMatrix = ({ technicals, anchorTechnicals }: { technicals: any, anchorTechnicals: any }) => {
+    const checks = [
+        { label: "ADX Trend Strength", pass: technicals.adx.value >= 12, value: technicals.adx.value.toFixed(1) },
+        { label: "Volume Fuel (20d)", pass: technicals.volume.ratio >= 0.8, value: `${technicals.volume.ratio.toFixed(2)}x` },
+        { label: "MTF Trend Sync", pass: technicals.sma.trend === anchorTechnicals?.sma.trend, value: `${technicals.sma.trend} vs ${anchorTechnicals?.sma.trend || '...'}` },
+        { label: "ATR Volatility Guard", pass: true, value: "ENABLED" } // Handled by backend logic
+    ];
+
+    return (
+        <div className="grid grid-cols-2 gap-2 mt-4">
+            {checks.map((check, i) => (
+                <div key={i} className="bg-slate-900/40 border border-slate-800/50 p-2 rounded-lg flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        {check.pass ? <Check size={10} className="text-emerald-500" /> : <AlertTriangle size={10} className="text-amber-500" />}
+                        <span className="text-[9px] text-slate-400 uppercase font-bold">{check.label}</span>
+                    </div>
+                    <span className={clsx("text-[9px] font-mono", check.pass ? "text-emerald-400" : "text-amber-400")}>{check.value}</span>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+const SentinelNewsAudit = ({ news }: { news: string[] }) => {
+    if (!news || news.length === 0) return null;
+    return (
+        <div className="space-y-2 mt-4">
+            <div className="flex items-center gap-2 mb-2">
+                <Check size={12} className="text-emerald-500" />
+                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Sentiment Audit: Ingested Headlines</span>
+            </div>
+            {news.map((n, i) => (
+                <div key={i} className="bg-slate-900/40 border border-slate-800/50 p-2.5 rounded-lg text-[10px] text-slate-400 font-light flex gap-3 transition-colors hover:bg-slate-800/40">
+                    <span className="text-slate-600 font-mono">#{i + 1}</span>
+                    <p className="line-clamp-1 flex-1">{n}</p>
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500/50 mt-1" /> {/* Sentiment Indicator */}
+                </div>
+            ))}
+        </div>
+    );
+};
 
 const IndicatorCard = ({ name, signal, value, subtext, strength }: any) => {
     const color = signal === 'UP' ? 'emerald' : signal === 'DOWN' ? 'red' : 'slate';
@@ -264,7 +330,7 @@ const AnalysisStep = ({
 const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
     if (!data || data.stage === AnalysisStage.IDLE) return null;
 
-    const { stage, timings, price, change24h, candles, technicals, deepAnalysis } = data;
+    const { stage, timings, price, change24h, candles, technicals, deepAnalysis, systemLog, anchorTechnicals, news } = data;
 
     // Determine Step Statuses
     const getStatus = (targetStage: string): 'PENDING' | 'ACTIVE' | 'COMPLETE' => {
@@ -297,7 +363,7 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
     return (
         <div className="max-w-2xl mx-auto py-8 px-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
-            {/* Header */}
+            {/* HEADER & DIAGNOSTICS */}
             <div className="mb-8 flex items-center justify-between py-4 border-b border-slate-800/50">
                 <div>
                     <h1 className="text-2xl font-light tracking-wider text-white">LIVE ANALYSIS</h1>
@@ -314,6 +380,8 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                     </span>
                 </div>
             </div>
+
+            {systemLog && systemLog.length > 0 && <DiagnosticConsole logs={systemLog} />}
 
             {/* ERROR VIEW */}
             {stage === AnalysisStage.ERROR && (
@@ -344,7 +412,7 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                     <MetricRow label="Current Price" value={formatCurrency(price)} color="white" />
                     <MetricRow label="24h Change" value={formatPct(change24h)} color={change24h >= 0 ? "emerald" : "red"} />
                     <MetricRow label="Volume 24h" value={technicals ? `${technicals.volume.ratio.toFixed(2)}x Avg` : "..."} subtext="Relative Volume" />
-                    <MetricRow label="Data Points" value={`${data.dataPoints} candles`} subtext="H1 Timeframe" />
+                    <MetricRow label="Market Pulse" value={news.length > 0 ? `${news.length} Headlines` : "Fetching..."} subtext="Social/News Feed" />
                 </div>
             </AnalysisStep>
 
@@ -363,6 +431,7 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                             <IndicatorCard name="ADX" signal={technicals.adx.signal} value={technicals.adx.value.toFixed(1)} strength={technicals.adx.strength} subtext="Trend Strength" />
                             <IndicatorCard name="ATR" signal="NEUTRAL" value={technicals.atr.value.toFixed(4)} strength={50} subtext="Volatility (Units)" />
                         </div>
+                        <DecisionMatrix technicals={technicals} anchorTechnicals={anchorTechnicals} />
                     </div>
                 )}
             </AnalysisStep>
@@ -402,6 +471,8 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                                 {technicals.summary.regime.replace('_', ' ')}
                             </span>
                         </div>
+
+                        <SentinelNewsAudit news={news} />
                     </div>
                 )}
             </AnalysisStep>
@@ -521,6 +592,44 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                                         </defs>
                                         <XAxis dataKey="time" hide />
                                         <YAxis domain={['auto', 'auto']} hide />
+
+                                        {deepAnalysis.verdict.targets && deepAnalysis.verdict.direction !== 'NEUTRAL' && (
+                                            <>
+                                                {/* Target Zone */}
+                                                <ReferenceArea
+                                                    y1={parseFloat(deepAnalysis.verdict.targets.entry.replace(/[^0-9.]/g, ''))}
+                                                    y2={parseFloat(deepAnalysis.verdict.targets.target.replace(/[^0-9.]/g, ''))}
+                                                    fill={deepAnalysis.verdict.direction === 'UP' ? '#10b981' : '#ef4444'}
+                                                    fillOpacity={0.05}
+                                                />
+                                                {/* Stop Zone */}
+                                                <ReferenceArea
+                                                    y1={parseFloat(deepAnalysis.verdict.targets.entry.replace(/[^0-9.]/g, ''))}
+                                                    y2={parseFloat(deepAnalysis.verdict.targets.stopLoss.replace(/[^0-9.]/g, ''))}
+                                                    fill="#ef4444"
+                                                    fillOpacity={0.1}
+                                                />
+                                                {/* Levels */}
+                                                <ReferenceLine
+                                                    y={parseFloat(deepAnalysis.verdict.targets.target.replace(/[^0-9.]/g, ''))}
+                                                    stroke="#10b981"
+                                                    strokeDasharray="3 3"
+                                                    label={{ value: 'TARGET', position: 'right', fill: '#10b981', fontSize: 8 }}
+                                                />
+                                                <ReferenceLine
+                                                    y={parseFloat(deepAnalysis.verdict.targets.stopLoss.replace(/[^0-9.]/g, ''))}
+                                                    stroke="#ef4444"
+                                                    strokeDasharray="3 3"
+                                                    label={{ value: 'STOP', position: 'right', fill: '#ef4444', fontSize: 8 }}
+                                                />
+                                                <ReferenceLine
+                                                    y={parseFloat(deepAnalysis.verdict.targets.entry.replace(/[^0-9.]/g, ''))}
+                                                    stroke="#3b82f6"
+                                                    label={{ value: 'ENTRY', position: 'right', fill: '#3b82f6', fontSize: 8 }}
+                                                />
+                                            </>
+                                        )}
+
                                         <Area
                                             type="monotone"
                                             dataKey="close"

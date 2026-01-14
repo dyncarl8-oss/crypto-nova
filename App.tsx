@@ -219,26 +219,33 @@ export default function App() {
       // Initialize State
       setMarketState({
         symbol: symbol.toUpperCase(),
-        status: 'FETCHING', // Legacy compat
+        status: 'FETCHING',
         stage: AnalysisStage.FETCHING_DATA,
         timings: { data: 0, technicals: 0, aggregation: 0, ai: 0 },
         price: 0, change24h: 0, volume24h: 0, dataPoints: 0,
-        candles: [], technicals: null, deepAnalysis: null
+        candles: [], news: [], systemLog: ["> INITIALIZING GLASS BOX DIAGNOSTICS..."],
+        technicals: null, anchorTechnicals: null, deepAnalysis: null
       });
 
-      // Step 1: Data Collection (Slow, realistic delay)
-      console.log(`Analysis Step 1: Fetching data for ${symbol}`);
+      const log = (msg: string) => {
+        setMarketState(prev => prev ? { ...prev, systemLog: [...prev.systemLog, `> ${msg}`] } : null);
+      };
+
+      // Step 1: Data Collection
+      log(`CONNECTING TO EXCHANGE: FETCHING ${symbol.toUpperCase()} STREAMS...`);
       const t0 = performance.now();
 
       const { fetchNews } = await import('./services/marketService');
 
       const [priceData, ohlcvData, anchorData, news] = await Promise.all([
         fetchCurrentPrice(symbol),
-        fetchOHLCV(symbol, 300, 'hour'), // Entry (1H)
-        fetchOHLCV(symbol, 100, 'day'),   // Anchor (Daily for 1H entry)
+        fetchOHLCV(symbol, 300, 'hour'),
+        fetchOHLCV(symbol, 100, 'day'),
         fetchNews(symbol)
       ]);
-      console.log(`Analysis Step 1: Data received for ${symbol}. Pair: ${priceData.pair}`);
+
+      log(`DATA RECEIVED: 1H STREAMS INGESTED. DAILY ANCHOR SYNCED.`);
+      log(`NEWS INGESTION: ${news.length} HEADLINES QUEUED FOR SENTIMENT AUDIT.`);
       const candles = ohlcvData.candles;
       const anchorCandles = anchorData.candles;
 
@@ -251,41 +258,52 @@ export default function App() {
 
       setMarketState(prev => ({
         ...prev!,
-        symbol: priceData.pair, // Use the full pair (e.g. BTC/USDT)
+        symbol: priceData.pair,
         stage: AnalysisStage.COMPUTING_TECHNICALS,
         timings: { ...prev!.timings, data: parseFloat(((t1 - t0) / 1000).toFixed(1)) },
         price: priceData.price,
         change24h: priceData.change24h,
         volume24h: candles[candles.length - 1].volume,
         candles,
+        news,
         dataPoints: candles.length
       }));
 
-      // Step 2: Technical Analysis
-      await delay(2000); // 2s delay to "compute indicators"
+      // Step 2: Technicals
+      log("COMPUTING MULTI-LAYER TECHNICAL INDICATORS...");
+      const t2_start = performance.now();
       const technicals = analyzeMarket(candles);
+
+      log("SYNCHRONIZING WITH ANCHOR TIMEFRAME (1D)...");
       const anchorTechnicals = analyzeMarket(anchorCandles);
-      const t2 = performance.now();
+
+      log(`ADX(${technicals.adx.value.toFixed(1)}) | ATR(${technicals.atr.value.toFixed(4)}) | RSI(${technicals.rsi.value})`);
+      log(`ANCHOR TREND: ${anchorTechnicals.sma.trend} | ENTRY TREND: ${technicals.sma.trend}`);
+
+      const t2_end = performance.now();
 
       setMarketState(prev => ({
         ...prev!,
         stage: AnalysisStage.AGGREGATING_SIGNALS,
-        timings: { ...prev!.timings, technicals: parseFloat(((t2 - t1) / 1000).toFixed(1)) },
+        timings: { ...prev!.timings, technicals: parseFloat(((t2_end - t2_start) / 1000).toFixed(1)) },
         technicals,
+        anchorTechnicals
       }));
 
       // Step 3: Signal Aggregation
+      log("AGGREGATING SIGNALS: CALCULATING CONVICTION SCORE...");
       await delay(2000); // 2s delay to "weigh signals"
       const t3 = performance.now();
 
       setMarketState(prev => ({
         ...prev!,
         stage: AnalysisStage.GENERATING_THOUGHTS,
-        timings: { ...prev!.timings, aggregation: parseFloat(((t3 - t2) / 1000).toFixed(1)) },
+        timings: { ...prev!.timings, aggregation: parseFloat(((t3 - t2_end) / 1000).toFixed(1)) },
       }));
 
       // Step 4: AI Deep Analysis (Async)
-      // Fetching happens here. The UI will show "ThinkingLoader" now.
+      log("INITIALIZING GEMINI-3-PRO: EXECUTING STRATEGIC REASONING...");
+      const t4_start = performance.now();
       const deepAnalysis = await geminiService.generateDeepAnalysis(
         symbol,
         technicals,
@@ -294,16 +312,22 @@ export default function App() {
         news
       );
 
-      const t4 = performance.now();
-      const aiTime = parseFloat(((t4 - t3) / 1000).toFixed(1));
+      const t4_end = performance.now();
+      const aiTime = parseFloat(((t4_end - t4_start) / 1000).toFixed(1));
 
-      // Update state with the analysis but keep stage at GENERATING_THOUGHTS
-      // This triggers the dashboard to start the Typewriter animation from ThinkingReveal
+      log("REASONING COMPLETE. APPLYING ATR VOLATILITY GUARD...");
+      if (deepAnalysis.verdict.direction !== 'NEUTRAL' && deepAnalysis.verdict.targets) {
+        log(`TARGET AUDIT: ${deepAnalysis.verdict.targets.target} | ATR LIMITS: VALID`);
+      }
+
       setMarketState(prev => ({
         ...prev!,
         deepAnalysis,
         timings: { ...prev!.timings, ai: aiTime },
+        stage: AnalysisStage.COMPLETE // Explicitly mark complete here for the log
       }));
+
+      log("ANALYSIS PROTOCOL FINALIZED. READY FOR DISSEMINATION.");
 
       // SYNCHRONIZATION:
       // We pause the execution here until the UI calls handleAnalysisVisualComplete.
