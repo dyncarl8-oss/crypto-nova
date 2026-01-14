@@ -116,21 +116,28 @@ export default function App() {
     const authenticateWhop = async () => {
       console.log("-----------------------------------------");
       console.log("PROTOCOL: INITIALIZING WHOP AUTHENTICATION");
-      serverLog('info', 'PROTOCOL: INITIALIZING WHOP AUTHENTICATION');
       setIsWhopLoading(true);
-      const userId = whopService.getUserIdFromParams();
 
-      if (userId) {
-        const [user, access] = await Promise.all([
-          whopService.retrieveUser(userId),
-          whopService.checkAccess(userId)
-        ]);
-        setWhopUser(user);
-        setWhopAccess(access);
-      } else {
-        // Fallback or demo mode if no user_id is found (e.g. running outside Whop)
-        console.log("Whop: No user_id found in URL. Running in guest mode.");
+      try {
+        // Fetch user data from our server which can read the x-whop-user-token header
+        const response = await fetch('/api/whop/me');
+        const data = await response.json();
+
+        console.log("[WHOP AUTH] Server response:", data);
+
+        if (data.authenticated && data.user) {
+          setWhopUser(data.user);
+          setWhopAccess(data.access);
+          console.log("[WHOP AUTH] User authenticated:", data.user.name);
+        } else {
+          console.log("[WHOP AUTH] Not authenticated:", data.error || 'Unknown reason');
+          // Guest mode - allow access without profile display
+        }
+      } catch (error) {
+        console.error("[WHOP AUTH] Error fetching user:", error);
+        // Guest mode on error
       }
+
       setIsWhopLoading(false);
     };
 
