@@ -1,0 +1,7 @@
+{
+  "name": "Nova - AI Market Analyst",
+  "description": "A futuristic, voice-first cryptocurrency market analysis platform powered by Gemini Live API and Gemini 3 Pro.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
