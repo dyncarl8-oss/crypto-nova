@@ -9,9 +9,10 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Initialize Whop SDK with API key
+// Initialize Whop SDK with API key and App ID
 const whopClient = new Whop({
-    apiKey: process.env.WHOP_API_KEY || ''
+    apiKey: process.env.WHOP_API_KEY || '',
+    appId: process.env.WHOP_APP_ID || ''
 });
 
 // Serve static files from dist
