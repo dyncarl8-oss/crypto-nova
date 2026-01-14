@@ -2,12 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Mic, Send, Menu, MicOff, Terminal, Wifi, X, Power, Settings, Check, PhoneOff, Phone } from 'lucide-react';
 import VoiceOrb from './components/VoiceOrb';
 import AnalysisDashboard from './components/AnalysisDashboard';
+import TypewriterHint from './components/TypewriterHint';
+import MembershipGate from './components/MembershipGate';
 import { MarketState, ChatMessage, CRYPTO_TOOLS, AnalysisStage } from './types';
 import { geminiService } from './services/geminiService';
 import { fetchOHLCV, fetchCurrentPrice, analyzeMarket } from './services/marketService';
 import { LiveServerMessage, Modality } from '@google/genai';
 import { createPcmBlob, decodeAudioData, base64ToUint8Array } from './services/audioUtils';
 import { SYSTEM_INSTRUCTION, LIVE_MODEL } from './constants';
+import { whopService } from './services/whopService';
+import { WhopUser, WhopAccess } from './types';
+import { serverLog } from './services/logger';
 import clsx from 'clsx';
 
 export default function App() {
@@ -23,6 +28,9 @@ export default function App() {
   const [showLog, setShowLog] = useState(false);
   const [isSystemBusy, setIsSystemBusy] = useState(false);
   const [isChatThinking, setIsChatThinking] = useState(false);
+  const [whopUser, setWhopUser] = useState<WhopUser | null>(null);
+  const [whopAccess, setWhopAccess] = useState<WhopAccess | null>(null);
+  const [isWhopLoading, setIsWhopLoading] = useState(true);
 
   // --- SETTINGS STATE ---
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
@@ -103,6 +111,31 @@ export default function App() {
     navigator.mediaDevices.addEventListener('devicechange', getDevices);
     return () => navigator.mediaDevices.removeEventListener('devicechange', getDevices);
   }, [selectedDeviceId]);
+
+  useEffect(() => {
+    const authenticateWhop = async () => {
+      console.log("-----------------------------------------");
+      console.log("PROTOCOL: INITIALIZING WHOP AUTHENTICATION");
+      serverLog('info', 'PROTOCOL: INITIALIZING WHOP AUTHENTICATION');
+      setIsWhopLoading(true);
+      const userId = whopService.getUserIdFromParams();
+
+      if (userId) {
+        const [user, access] = await Promise.all([
+          whopService.retrieveUser(userId),
+          whopService.checkAccess(userId)
+        ]);
+        setWhopUser(user);
+        setWhopAccess(access);
+      } else {
+        // Fallback or demo mode if no user_id is found (e.g. running outside Whop)
+        console.log("Whop: No user_id found in URL. Running in guest mode.");
+      }
+      setIsWhopLoading(false);
+    };
+
+    authenticateWhop();
+  }, []);
 
   // --- AUDIO OUTPUT HELPER ---
   const playAudioData = async (base64Data: string, onStart?: () => void) => {
@@ -340,7 +373,7 @@ export default function App() {
 
             // Transcript handling (Input/Output)
             const inputTrans = msg.serverContent?.inputTranscription;
-            if (inputTrans?.text && inputTrans?.final) {
+            if (inputTrans?.text && (inputTrans as any).final) {
               addMessage('user', inputTrans.text);
             }
 
@@ -557,16 +590,28 @@ export default function App() {
         });
 
       } catch (e) {
-        console.error("Terminal interaction error:", e);
-        setOrbState(isMicActive ? 'listening' : 'idle');
-        addMessage('ai', "System encountered an error processing your request.");
-        setIsChatThinking(false);
       }
     }
   };
 
+  // --- RENDER ---
+  if (isWhopLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
+          <p className="text-xs font-mono text-slate-500 uppercase tracking-widest">Personalizing Nova...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (whopUser && whopAccess && !whopAccess.has_access) {
+    return <MembershipGate />;
+  }
+
   return (
-    <div className="flex h-screen w-full bg-[#020617] text-slate-100 font-sans overflow-hidden relative selection:bg-emerald-500/30">
+    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500/30 overflow-hidden">
 
       {/* Background */}
       <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
@@ -586,6 +631,28 @@ export default function App() {
           </div>
           <button onClick={() => setShowLog(false)} className="md:hidden p-2"><X size={16} /></button>
         </div>
+
+        {/* PROFILE SECTION */}
+        {whopUser && (
+          <div className="p-4 border-b border-slate-800/50 bg-slate-900/20">
+            <div className="flex items-center gap-3 p-3 bg-slate-900/50 rounded-xl border border-slate-800/50 shadow-inner">
+              {whopUser.profile_picture ? (
+                <img src={whopUser.profile_picture} alt={whopUser.name} className="w-10 h-10 rounded-lg object-cover ring-2 ring-emerald-500/20 shadow-lg" />
+              ) : (
+                <div className="w-10 h-10 bg-gradient-to-br from-slate-700 to-slate-800 rounded-lg flex items-center justify-center text-sm text-slate-400 font-bold border border-slate-700 shadow-lg">
+                  {whopUser.name[0]}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-slate-100 truncate tracking-tight">{whopUser.name}</p>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" />
+                  <p className="text-[10px] font-mono text-emerald-500/60 truncate uppercase tracking-widest">@{whopUser.username}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs custom-scrollbar">
           {messages.map(m => (
@@ -638,6 +705,11 @@ export default function App() {
               <Send size={14} />
             </button>
           </form>
+          <div className="mt-3 text-center px-2">
+            <p className="text-[10px] font-mono text-slate-500/50 tracking-wider">
+              Tips: Use voice mode for faster response.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -645,11 +717,30 @@ export default function App() {
       <div className={clsx("flex-1 flex flex-col relative z-10 transition-all duration-300 h-full", showLog ? "ml-[320px]" : "ml-0")}>
 
         <div className="h-16 px-6 flex items-center justify-between z-30 pointer-events-none">
-          <div className="pointer-events-auto">
+          <div className="flex items-center gap-4 pointer-events-auto">
             {!showLog && (
               <button onClick={() => setShowLog(true)} className="p-2 bg-slate-900/50 border border-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
                 <Menu size={20} />
               </button>
+            )}
+
+            {whopUser && (
+              <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-4 duration-500">
+                <div className="relative">
+                  {whopUser.profile_picture ? (
+                    <img src={whopUser.profile_picture} alt={whopUser.name} className="w-8 h-8 rounded-full border-2 border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]" />
+                  ) : (
+                    <div className="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-[10px] text-slate-400 font-bold border border-slate-700">
+                      {whopUser.name[0]}
+                    </div>
+                  )}
+                  <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-slate-950 shadow-[0_0_5px_rgba(16,185,129,0.5)]" />
+                </div>
+                <div className="hidden sm:block">
+                  <p className="text-[10px] font-mono text-slate-500 uppercase tracking-tighter leading-none mb-0.5">Quantum Operator</p>
+                  <p className="text-xs font-bold text-slate-100 leading-none">{whopUser.name}</p>
+                </div>
+              </div>
             )}
           </div>
           {error && <div className="px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs backdrop-blur-md pointer-events-auto">{error}</div>}
@@ -680,8 +771,11 @@ export default function App() {
             {/* ACTIVE SESSION STATE (Orb + Dynamic Labels) */}
             {!marketState && isMicActive && (
               <div className="flex flex-col items-center justify-center h-full space-y-8 mt-[-60px]">
-                <div className="w-80 h-80 relative">
-                  <VoiceOrb state={orbState} volume={volume} />
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-80 h-80 relative">
+                    <VoiceOrb state={orbState} volume={volume} />
+                  </div>
+                  {orbState === 'listening' && <TypewriterHint />}
                 </div>
                 <div className="text-2xl font-light text-white tracking-[0.2em] uppercase animate-pulse">
                   {orbState === 'speaking' ? 'Speaking...' :

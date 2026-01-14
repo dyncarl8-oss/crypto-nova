@@ -133,3 +133,15 @@ export const CRYPTO_TOOLS = [
     },
   },
 ];
+
+export interface WhopUser {
+  id: string;
+  username: string;
+  name: string;
+  profile_picture?: string;
+}
+
+export interface WhopAccess {
+  has_access: boolean;
+  access_level: 'no_access' | 'customer' | 'admin';
+}
