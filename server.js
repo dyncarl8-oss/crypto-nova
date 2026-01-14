@@ -23,7 +23,7 @@ app.get('/api/whop/me', async (req, res) => {
     const userToken = req.headers['x-whop-user-token'];
 
     console.log('[SERVER] /api/whop/me called');
-    console.log('[SERVER] x-whop-user-token:', userToken ? 'PRESENT' : 'MISSING');
+    console.log('[SERVER] x-whop-user-token:', userToken ? `PRESENT (${userToken.substring(0, 20)}...)` : 'MISSING');
 
     if (!userToken) {
         return res.json({
@@ -33,10 +33,8 @@ app.get('/api/whop/me', async (req, res) => {
     }
 
     try {
-        // Verify the token - this extracts the userId automatically from the token
-        const verification = await whopClient.verifyUserToken({
-            headers: { 'x-whop-user-token': userToken }
-        });
+        // Verify the token - pass the raw request headers
+        const verification = await whopClient.verifyUserToken(req.headers);
 
         const userId = verification.userId;
         console.log('[SERVER] Verified userId:', userId);
