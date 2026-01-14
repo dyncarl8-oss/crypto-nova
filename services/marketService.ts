@@ -300,7 +300,7 @@ export function analyzeMarket(candles: OHLCV[]): TechnicalAnalysis {
   }
 
   return {
-    rsi: { ...rsi, name: 'RSI', value: rsi.value.toFixed(1), signal: rsi.signal as any },
+    rsi: { ...rsi, name: 'RSI', value: rsi.value, signal: rsi.signal as any },
     stoch: { ...stoch, signal: stoch.signal as any },
     macd: { value: macdVal, histogram, signal: macdVal > 0 ? 'UP' : 'DOWN', strength: 75 },
     adx: { ...adx, signal: adx.signal as any },

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MarketState, AnalysisStage, ThoughtStep } from '../types';
 import { AreaChart, Area, ResponsiveContainer, YAxis, Tooltip, XAxis, ReferenceLine, ReferenceArea } from 'recharts';
 import {
-    ChevronDown, ChevronUp, CheckCircle2, Circle, Loader2,
+    ChevronDown, ChevronUp, ChevronRight, CheckCircle2, Circle, Loader2,
     Brain, AlertTriangle, TrendingUp, Check
 } from 'lucide-react';
 import clsx from 'clsx';
@@ -20,15 +20,18 @@ const StatusIcon = ({ status, active }: { status: 'PENDING' | 'ACTIVE' | 'COMPLE
     return <Circle className="text-slate-700" size={20} />;
 };
 
-const MetricRow = ({ label, value, subtext, color = 'slate' }: any) => (
-    <div className="flex justify-between items-start py-2 border-b border-slate-800/50 last:border-0">
-        <span className="text-slate-400 text-sm">{label}</span>
-        <div className="text-right">
-            <div className={clsx("font-mono font-medium", `text-${color}-400`)}>{value}</div>
-            {subtext && <div className="text-[10px] text-slate-500">{subtext}</div>}
+const MetricRow = ({ label, value, subtext, color = 'slate' }: any) => {
+    const textColor = color === 'white' ? 'text-white' : `text-${color}-400`;
+    return (
+        <div className="flex justify-between items-start py-2 border-b border-slate-800/50 last:border-0">
+            <span className="text-slate-400 text-sm">{label}</span>
+            <div className="text-right">
+                <div className={clsx("font-mono font-medium", textColor)}>{value}</div>
+                {subtext && <div className="text-[10px] text-slate-500">{subtext}</div>}
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 const StrengthBar = ({ value, color = 'emerald' }: { value: number, color?: string }) => (
     <div className="h-1 w-full bg-slate-800 rounded-full mt-1 overflow-hidden">
@@ -55,7 +58,6 @@ const DiagnosticConsole = ({ logs }: { logs: string[] }) => {
         >
             {logs.map((log, i) => (
                 <div key={i} className="animate-in fade-in slide-in-from-left-2 duration-300">
-                    <span className="text-slate-600 mr-2">[{new Date().toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit' })}]</span>
                     {log}
                 </div>
             ))}
@@ -87,20 +89,37 @@ const DecisionMatrix = ({ technicals, anchorTechnicals }: { technicals: any, anc
 };
 
 const SentinelNewsAudit = ({ news }: { news: string[] }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
     if (!news || news.length === 0) return null;
+
     return (
-        <div className="space-y-2 mt-4">
-            <div className="flex items-center gap-2 mb-2">
-                <Check size={12} className="text-emerald-500" />
-                <span className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Sentiment Audit: Ingested Headlines</span>
-            </div>
-            {news.map((n, i) => (
-                <div key={i} className="bg-slate-900/40 border border-slate-800/50 p-2.5 rounded-lg text-[10px] text-slate-400 font-light flex gap-3 transition-colors hover:bg-slate-800/40">
-                    <span className="text-slate-600 font-mono">#{i + 1}</span>
-                    <p className="line-clamp-1 flex-1">{n}</p>
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500/50 mt-1" /> {/* Sentiment Indicator */}
+        <div className="space-y-2 mt-2">
+            <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="w-full flex items-center justify-between p-3 bg-slate-900/40 border border-slate-800/50 rounded-lg group transition-all hover:bg-slate-800/60"
+            >
+                <div className="flex items-center gap-3">
+                    <div className="p-1.5 bg-blue-500/10 rounded-md">
+                        <Check size={14} className="text-blue-400" />
+                    </div>
+                    <div className="text-left">
+                        <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest block">Headline Audit</span>
+                        <span className="text-xs text-white font-medium">{news.length} Key Sources Scanned</span>
+                    </div>
                 </div>
-            ))}
+                <ChevronRight size={16} className={clsx("text-slate-600 transition-transform duration-300", isExpanded && "rotate-90")} />
+            </button>
+
+            {isExpanded && (
+                <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300 max-h-64 overflow-y-auto custom-scrollbar pr-1">
+                    {news.map((n, i) => (
+                        <div key={i} className="bg-slate-900/20 border border-slate-800/30 p-2.5 rounded-lg text-[10px] text-slate-400 font-light flex gap-3">
+                            <span className="text-slate-600 font-mono">#{i + 1}</span>
+                            <p className="flex-1 leading-relaxed">{n}</p>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 };
@@ -162,7 +181,6 @@ const ThinkingLoader = ({ symbol }: { symbol?: string }) => {
     return (
         <div className="space-y-4 py-4">
             <div className="flex items-center gap-3 text-blue-400 text-xs font-mono animate-pulse">
-                <Loader2 size={14} className="animate-spin" />
                 <span>{text}</span>
             </div>
             <div className="grid grid-cols-5 gap-2">
@@ -263,9 +281,9 @@ const ThinkingReveal = ({ steps, onAllComplete }: { steps: ThoughtStep[], onAllC
 };
 
 const AnalysisStep = ({
-    title, subtitle, status, duration, children, isLast
+    index, title, subtitle, status, duration, children, isLast
 }: {
-    title: string, subtitle?: string, status: 'PENDING' | 'ACTIVE' | 'COMPLETE', duration?: string, children?: React.ReactNode, isLast?: boolean
+    index?: number, title: string, subtitle?: string, status: 'PENDING' | 'ACTIVE' | 'COMPLETE', duration?: string, children?: React.ReactNode, isLast?: boolean
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const stepRef = useRef<HTMLDivElement>(null);
@@ -304,12 +322,21 @@ const AnalysisStep = ({
 
             {/* Header */}
             <div className="flex items-center justify-between mb-2 cursor-pointer group" onClick={() => setIsOpen(!isOpen)}>
-                <div>
-                    <h3 className={clsx("text-lg font-medium transition-colors",
-                        isActive ? "text-blue-400 animate-pulse" : isComplete ? "text-slate-200" : "text-slate-600 group-hover:text-slate-400")}>
-                        {title}
-                    </h3>
-                    {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+                <div className="flex items-center gap-3">
+                    {index && (
+                        <span className={clsx("text-xs font-mono font-bold w-5 h-5 flex items-center justify-center rounded border transition-colors",
+                            isActive ? "bg-blue-500/20 text-blue-400 border-blue-500/30" :
+                                isComplete ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-900/50 text-slate-700 border-slate-800")}>
+                            {index}
+                        </span>
+                    )}
+                    <div>
+                        <h3 className={clsx("text-lg font-medium transition-colors",
+                            isActive ? "text-blue-400 animate-pulse" : isComplete ? "text-slate-200" : "text-slate-600 group-hover:text-slate-400")}>
+                            {title}
+                        </h3>
+                        {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+                    </div>
                 </div>
                 <div className="flex items-center gap-3">
                     {duration && <span className="text-xs font-mono text-slate-500 bg-slate-900 px-2 py-1 rounded border border-slate-800">{duration}</span>}
@@ -328,32 +355,35 @@ const AnalysisStep = ({
 // --- MAIN COMPONENT ---
 
 const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
+    const [aiThoughtsComplete, setAiThoughtsComplete] = useState(false);
+
     if (!data || data.stage === AnalysisStage.IDLE) return null;
 
     const { stage, timings, price, change24h, candles, technicals, deepAnalysis, systemLog, anchorTechnicals, news } = data;
 
+    // Type overrides for recharts to bypass strict Props check in some environments
+    const RefArea = ReferenceArea as any;
+    const RefLine = ReferenceLine as any;
+
     // Determine Step Statuses
-    const getStatus = (targetStage: string): 'PENDING' | 'ACTIVE' | 'COMPLETE' => {
-        // ERROR HANDLING: If we are in ERROR stage, everything before or at the error is 'COMPLETE' (failed), 
-        // but we'll show the error card separately.
-        if (stage === AnalysisStage.ERROR) return 'COMPLETE';
-
-        // If the entire process is complete, everything is COMPLETE. 
-        if (stage === AnalysisStage.COMPLETE) return 'COMPLETE';
-
+    const getStatus = (targetStage: AnalysisStage): 'PENDING' | 'ACTIVE' | 'COMPLETE' => {
         const stages = [
             AnalysisStage.FETCHING_DATA,
+            AnalysisStage.PROTOCOL_LOGS,
             AnalysisStage.COMPUTING_TECHNICALS,
+            AnalysisStage.SAFETY_AUDIT,
+            AnalysisStage.SENTIMENT_AUDIT,
             AnalysisStage.AGGREGATING_SIGNALS,
             AnalysisStage.GENERATING_THOUGHTS,
             AnalysisStage.COMPLETE
         ];
 
         const currentIndex = stages.indexOf(stage);
-        const targetIndex = stages.indexOf(targetStage as AnalysisStage);
+        const targetIndex = stages.indexOf(targetStage);
 
-        if (currentIndex > targetIndex) return 'COMPLETE';
+        if (stage === AnalysisStage.ERROR || stage === AnalysisStage.COMPLETE) return 'COMPLETE';
         if (currentIndex === targetIndex) return 'ACTIVE';
+        if (currentIndex > targetIndex) return 'COMPLETE';
         return 'PENDING';
     };
 
@@ -381,7 +411,6 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                 </div>
             </div>
 
-            {systemLog && systemLog.length > 0 && <DiagnosticConsole logs={systemLog} />}
 
             {/* ERROR VIEW */}
             {stage === AnalysisStage.ERROR && (
@@ -402,47 +431,64 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
             )}
 
             {/* STEP 1: DATA COLLECTION */}
-            <AnalysisStep
-                title="Data Collection"
-                subtitle={`Fetching live market data for ${data.symbol}`}
-                status={getStatus(AnalysisStage.FETCHING_DATA)}
-                duration={timings.data > 0 ? `${timings.data}s` : undefined}
-            >
+            <AnalysisStep index={1} title="Data Collection" status={getStatus(AnalysisStage.FETCHING_DATA)}>
                 <div className="grid grid-cols-2 gap-4 bg-slate-900/30 p-4 rounded-xl border border-slate-800/50">
                     <MetricRow label="Current Price" value={formatCurrency(price)} color="white" />
                     <MetricRow label="24h Change" value={formatPct(change24h)} color={change24h >= 0 ? "emerald" : "red"} />
                     <MetricRow label="Volume 24h" value={technicals ? `${technicals.volume.ratio.toFixed(2)}x Avg` : "..."} subtext="Relative Volume" />
-                    <MetricRow label="Market Pulse" value={news.length > 0 ? `${news.length} Headlines` : "Fetching..."} subtext="Social/News Feed" />
+                    <MetricRow label="Market Pulse" value={news && news.length > 0 ? `${news.length} Headlines` : "Scanning..."} subtext="Social/News Feed" />
                 </div>
             </AnalysisStep>
 
-            {/* STEP 2: TECHNICAL ANALYSIS */}
-            <AnalysisStep
-                title="Technical Analysis"
-                subtitle="Computing 25+ technical indicators"
-                status={getStatus(AnalysisStage.COMPUTING_TECHNICALS)}
-                duration={timings.technicals > 0 ? `${timings.technicals}s` : undefined}
-            >
+            {/* STEP 2: PROTOCOL EXECUTION */}
+            <AnalysisStep index={2} title="Protocol Execution" status={getStatus(AnalysisStage.PROTOCOL_LOGS)}>
+                <p className="text-[10px] text-slate-500 mb-4 uppercase font-black tracking-widest text-emerald-500/60">System Log: Live Diagnostics</p>
+                {systemLog && systemLog.length > 0 && <DiagnosticConsole logs={systemLog} />}
+            </AnalysisStep>
+
+            {/* STEP 3: QUANTITATIVE ANALYSIS */}
+            <AnalysisStep index={3} title="Quantitative Analysis" subtitle="Computing 25+ technical indicators" status={getStatus(AnalysisStage.COMPUTING_TECHNICALS)} duration={timings.technicals > 0 ? `${timings.technicals}s` : undefined}>
                 {technicals && (
                     <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-3">
-                            <IndicatorCard name="RSI" signal={technicals.rsi.signal} value={technicals.rsi.value} strength={technicals.rsi.strength} subtext="Momentum" />
-                            <IndicatorCard name="Stochastic" signal={technicals.stoch.signal} value={`${technicals.stoch.k.toFixed(0)}/${technicals.stoch.d.toFixed(0)}`} strength={technicals.stoch.strength} subtext="Oscillator" />
-                            <IndicatorCard name="ADX" signal={technicals.adx.signal} value={technicals.adx.value.toFixed(1)} strength={technicals.adx.strength} subtext="Trend Strength" />
-                            <IndicatorCard name="ATR" signal="NEUTRAL" value={technicals.atr.value.toFixed(4)} strength={50} subtext="Volatility (Units)" />
+                            <IndicatorCard name="RSI" signal={technicals.rsi.signal} value={technicals.rsi.value.toFixed(1)} strength={technicals.rsi.strength} subtext="Momentum" />
+                            <IndicatorCard name="EMA Trend" signal={technicals.ema.trend} value={technicals.ema.ema12.toFixed(1)} strength={80} subtext="Fast EMA (12)" />
+                            <IndicatorCard name="ADX Strength" signal={technicals.adx.signal} value={technicals.adx.value.toFixed(1)} strength={technicals.adx.strength} subtext="Trend Force" />
+                            <IndicatorCard name="ATR Value" signal="NEUTRAL" value={technicals.atr.value.toFixed(4)} strength={50} subtext="Daily Volatility" />
                         </div>
-                        <DecisionMatrix technicals={technicals} anchorTechnicals={anchorTechnicals} />
                     </div>
                 )}
             </AnalysisStep>
 
-            {/* STEP 3: SIGNAL AGGREGATION */}
             <AnalysisStep
-                title="Signal Aggregation"
-                subtitle="Weighing all signals for optimal confidence"
-                status={getStatus(AnalysisStage.AGGREGATING_SIGNALS)}
-                duration={timings.aggregation > 0 ? `${timings.aggregation}s` : undefined}
+                index={4}
+                title="Hedge Fund Safety Audit"
+                subtitle="Quantitative Validation Protocol"
+                status={getStatus(AnalysisStage.SAFETY_AUDIT)}
             >
+                {technicals && (
+                    <DecisionMatrix technicals={technicals} anchorTechnicals={anchorTechnicals} />
+                )}
+            </AnalysisStep>
+
+            <AnalysisStep
+                index={5}
+                title="Intelligence Sentiment Feed"
+                subtitle="Institutional News Audit"
+                status={getStatus(AnalysisStage.SENTIMENT_AUDIT)}
+            >
+                {getStatus(AnalysisStage.SENTIMENT_AUDIT) === 'PENDING' ? (
+                    <div className="flex items-center gap-3 p-3 bg-slate-900/30 rounded-lg border border-slate-800/50">
+                        <Loader2 className="animate-spin text-blue-500" size={16} />
+                        <span className="text-xs text-slate-500 font-mono animate-pulse">Scanning global media sources...</span>
+                    </div>
+                ) : (
+                    <SentinelNewsAudit news={news} />
+                )}
+            </AnalysisStep>
+
+            {/* STEP 6: SIGNAL AGGREGATION */}
+            <AnalysisStep index={6} title="Signal Aggregation" subtitle="Weighing all signals for optimal confidence" status={getStatus(AnalysisStage.AGGREGATING_SIGNALS)} duration={timings.aggregation > 0 ? `${timings.aggregation}s` : undefined}>
                 {technicals && (
                     <div className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/50 space-y-4">
                         <div className="flex justify-between text-sm mb-2">
@@ -471,19 +517,12 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                                 {technicals.summary.regime.replace('_', ' ')}
                             </span>
                         </div>
-
-                        <SentinelNewsAudit news={news} />
                     </div>
                 )}
             </AnalysisStep>
 
-            {/* STEP 4: AI DEEP ANALYSIS (THOUGHTS) */}
-            <AnalysisStep
-                title="AI Deep Analysis"
-                subtitle="Gemini 3 Pro analyzing market conditions"
-                status={getStatus(AnalysisStage.GENERATING_THOUGHTS)}
-                duration={timings.ai > 0 ? `${timings.ai}s` : undefined}
-            >
+            {/* STEP 7: AI DEEP ANALYSIS */}
+            <AnalysisStep index={7} title="AI Strategic Insights" subtitle="Gemini 3 Pro analyzing market conditions" status={getStatus(AnalysisStage.GENERATING_THOUGHTS)} duration={timings.ai > 0 ? `${timings.ai}s` : undefined}>
                 <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 font-mono text-xs text-slate-400 leading-relaxed max-h-[400px] overflow-y-auto relative custom-scrollbar min-h-[100px]">
                     <div className="flex items-center gap-2 mb-4 text-purple-400 pb-2 border-b border-purple-500/20">
                         <Brain size={14} />
@@ -495,17 +534,20 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                     ) : (
                         <ThinkingReveal
                             steps={deepAnalysis.thought_process || []}
-                            onAllComplete={onTypingComplete}
+                            onAllComplete={() => {
+                                setAiThoughtsComplete(true);
+                                onTypingComplete?.();
+                            }}
                         />
                     )}
                 </div>
             </AnalysisStep>
 
-            {/* STEP 5: FINAL VERDICT */}
+            {/* STEP 8: FINAL VERDICT */}
             <AnalysisStep
                 title="Final Verdict"
                 subtitle="High-confidence prediction"
-                status={getStatus(AnalysisStage.COMPLETE)}
+                status={aiThoughtsComplete && stage === AnalysisStage.COMPLETE ? 'COMPLETE' : 'PENDING'}
                 isLast={true}
             >
                 {deepAnalysis && (
@@ -586,43 +628,51 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                                     <AreaChart data={data.candles}>
                                         <defs>
                                             <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor={deepAnalysis.verdict.direction === 'UP' ? '#10b981' : deepAnalysis.verdict.direction === 'DOWN' ? '#ef4444' : '#334155'} stopOpacity={0.2} />
-                                                <stop offset="95%" stopColor={deepAnalysis.verdict.direction === 'UP' ? '#10b981' : deepAnalysis.verdict.direction === 'DOWN' ? '#ef4444' : '#334155'} stopOpacity={0} />
+                                                <stop offset="5%" stopColor={deepAnalysis?.verdict.direction === 'UP' ? '#10b981' : deepAnalysis?.verdict.direction === 'DOWN' ? '#ef4444' : '#334155'} stopOpacity={0.2} />
+                                                <stop offset="95%" stopColor={deepAnalysis?.verdict.direction === 'UP' ? '#10b981' : deepAnalysis?.verdict.direction === 'DOWN' ? '#ef4444' : '#334155'} stopOpacity={0} />
                                             </linearGradient>
                                         </defs>
                                         <XAxis dataKey="time" hide />
                                         <YAxis domain={['auto', 'auto']} hide />
+                                        <Tooltip
+                                            contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }}
+                                            itemStyle={{ color: '#94a3b8', fontSize: '10px', fontFamily: 'monospace' }}
+                                            labelStyle={{ color: '#cbd5e1', fontSize: '10px', fontFamily: 'monospace', marginBottom: '4px' }}
+                                            cursor={{ stroke: '#334155', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                            labelFormatter={(label) => new Date(label).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                            formatter={(value: number) => [`$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Price']}
+                                        />
 
-                                        {deepAnalysis.verdict.targets && deepAnalysis.verdict.direction !== 'NEUTRAL' && (
+                                        {deepAnalysis?.verdict.targets && deepAnalysis?.verdict.direction !== 'NEUTRAL' && (
                                             <>
                                                 {/* Target Zone */}
-                                                <ReferenceArea
+                                                <RefArea
                                                     y1={parseFloat(deepAnalysis.verdict.targets.entry.replace(/[^0-9.]/g, ''))}
                                                     y2={parseFloat(deepAnalysis.verdict.targets.target.replace(/[^0-9.]/g, ''))}
                                                     fill={deepAnalysis.verdict.direction === 'UP' ? '#10b981' : '#ef4444'}
                                                     fillOpacity={0.05}
                                                 />
                                                 {/* Stop Zone */}
-                                                <ReferenceArea
+                                                <RefArea
                                                     y1={parseFloat(deepAnalysis.verdict.targets.entry.replace(/[^0-9.]/g, ''))}
                                                     y2={parseFloat(deepAnalysis.verdict.targets.stopLoss.replace(/[^0-9.]/g, ''))}
                                                     fill="#ef4444"
                                                     fillOpacity={0.1}
                                                 />
                                                 {/* Levels */}
-                                                <ReferenceLine
+                                                <RefLine
                                                     y={parseFloat(deepAnalysis.verdict.targets.target.replace(/[^0-9.]/g, ''))}
                                                     stroke="#10b981"
                                                     strokeDasharray="3 3"
                                                     label={{ value: 'TARGET', position: 'right', fill: '#10b981', fontSize: 8 }}
                                                 />
-                                                <ReferenceLine
+                                                <RefLine
                                                     y={parseFloat(deepAnalysis.verdict.targets.stopLoss.replace(/[^0-9.]/g, ''))}
                                                     stroke="#ef4444"
                                                     strokeDasharray="3 3"
                                                     label={{ value: 'STOP', position: 'right', fill: '#ef4444', fontSize: 8 }}
                                                 />
-                                                <ReferenceLine
+                                                <RefLine
                                                     y={parseFloat(deepAnalysis.verdict.targets.entry.replace(/[^0-9.]/g, ''))}
                                                     stroke="#3b82f6"
                                                     label={{ value: 'ENTRY', position: 'right', fill: '#3b82f6', fontSize: 8 }}
@@ -633,7 +683,7 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                                         <Area
                                             type="monotone"
                                             dataKey="close"
-                                            stroke={deepAnalysis.verdict.direction === 'UP' ? '#10b981' : deepAnalysis.verdict.direction === 'DOWN' ? '#ef4444' : '#475569'}
+                                            stroke={deepAnalysis?.verdict.direction === 'UP' ? '#10b981' : deepAnalysis?.verdict.direction === 'DOWN' ? '#ef4444' : '#475569'}
                                             fill="url(#chartGradient)"
                                             strokeWidth={1.5}
                                         />

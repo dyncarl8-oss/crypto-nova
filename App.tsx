@@ -223,12 +223,13 @@ export default function App() {
         stage: AnalysisStage.FETCHING_DATA,
         timings: { data: 0, technicals: 0, aggregation: 0, ai: 0 },
         price: 0, change24h: 0, volume24h: 0, dataPoints: 0,
-        candles: [], news: [], systemLog: ["> INITIALIZING GLASS BOX DIAGNOSTICS..."],
+        candles: [], news: [], systemLog: [`[${new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}] > INITIALIZING GLASS BOX DIAGNOSTICS...`],
         technicals: null, anchorTechnicals: null, deepAnalysis: null
       });
 
       const log = (msg: string) => {
-        setMarketState(prev => prev ? { ...prev, systemLog: [...prev.systemLog, `> ${msg}`] } : null);
+        const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        setMarketState(prev => prev ? { ...prev, systemLog: [...prev.systemLog, `[${time}] > ${msg}`] } : null);
       };
 
       // Step 1: Data Collection
@@ -253,20 +254,29 @@ export default function App() {
         throw new Error(`Market data for ${symbol} is currently empty or unavailable.`);
       }
 
-      await delay(1500); // 1.5s delay to "connect to exchange"
-      const t1 = performance.now();
-
+      // STABILIZATION: Update all primary data fields BEFORE moving stage
       setMarketState(prev => ({
         ...prev!,
         symbol: priceData.pair,
-        stage: AnalysisStage.COMPUTING_TECHNICALS,
-        timings: { ...prev!.timings, data: parseFloat(((t1 - t0) / 1000).toFixed(1)) },
         price: priceData.price,
         change24h: priceData.change24h,
         volume24h: candles[candles.length - 1].volume,
         candles,
         news,
         dataPoints: candles.length
+      }));
+
+      await delay(1500);
+      log("DATA FEED STABILIZED. TRANSITIONING TO PROTOCOL EXECUTION...");
+      setMarketState(prev => ({ ...prev!, stage: AnalysisStage.PROTOCOL_LOGS }));
+      await delay(1500);
+
+      const t1 = performance.now();
+
+      setMarketState(prev => ({
+        ...prev!,
+        stage: AnalysisStage.COMPUTING_TECHNICALS,
+        timings: { ...prev!.timings, data: parseFloat(((t1 - t0) / 1000).toFixed(1)) },
       }));
 
       // Step 2: Technicals
@@ -277,17 +287,27 @@ export default function App() {
       log("SYNCHRONIZING WITH ANCHOR TIMEFRAME (1D)...");
       const anchorTechnicals = analyzeMarket(anchorCandles);
 
-      log(`ADX(${technicals.adx.value.toFixed(1)}) | ATR(${technicals.atr.value.toFixed(4)}) | RSI(${technicals.rsi.value})`);
+      log(`ADX(${technicals.adx.value.toFixed(1)}) | ATR(${technicals.atr.value.toFixed(4)}) | RSI(${(technicals.rsi.value as number).toFixed(1)})`);
       log(`ANCHOR TREND: ${anchorTechnicals.sma.trend} | ENTRY TREND: ${technicals.sma.trend}`);
 
       const t2_end = performance.now();
 
       setMarketState(prev => ({
         ...prev!,
-        stage: AnalysisStage.AGGREGATING_SIGNALS,
+        stage: AnalysisStage.SAFETY_AUDIT,
         timings: { ...prev!.timings, technicals: parseFloat(((t2_end - t2_start) / 1000).toFixed(1)) },
         technicals,
         anchorTechnicals
+      }));
+
+      await delay(2000);
+      log("SAFETY AUDIT COMPLETE. COMMENCING SENTIMENT ANALYSIS...");
+      setMarketState(prev => ({ ...prev!, stage: AnalysisStage.SENTIMENT_AUDIT }));
+      await delay(2000);
+
+      setMarketState(prev => ({
+        ...prev!,
+        stage: AnalysisStage.AGGREGATING_SIGNALS,
       }));
 
       // Step 3: Signal Aggregation
