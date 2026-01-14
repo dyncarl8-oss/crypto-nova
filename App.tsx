@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Send, Menu, MicOff, Terminal, Wifi, X, Power, Settings, Check, PhoneOff, Phone } from 'lucide-react';
+import { Mic, Send, Menu, MicOff, Terminal, Wifi, X, Power, Settings, Check, PhoneOff, Phone, ChevronRight, ChevronLeft } from 'lucide-react';
 import VoiceOrb from './components/VoiceOrb';
 import AnalysisDashboard from './components/AnalysisDashboard';
 import TypewriterHint from './components/TypewriterHint';
@@ -631,12 +631,11 @@ export default function App() {
         "fixed inset-y-0 left-0 z-40 w-[320px] bg-slate-950/90 backdrop-blur-xl border-r border-slate-800 transition-transform duration-300 flex flex-col shadow-2xl",
         showLog ? "translate-x-0" : "-translate-x-full"
       )}>
-        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-800/50 bg-slate-900/40">
+        <div className="h-16 flex items-center px-4 border-b border-slate-800/50 bg-slate-900/40">
           <div className="flex items-center gap-3">
             <Terminal className="text-emerald-500" size={18} />
             <span className="text-sm font-mono tracking-wider text-slate-300">SYSTEM LOG</span>
           </div>
-          <button onClick={() => setShowLog(false)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors"><X size={16} /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs custom-scrollbar">
           {messages.map(m => (
@@ -703,7 +702,7 @@ export default function App() {
         <div className="h-16 px-6 flex items-center justify-between z-30 pointer-events-none">
           <div className="flex items-center gap-4 pointer-events-auto">
             <button onClick={() => setShowLog(!showLog)} className="p-2 bg-slate-900/50 border border-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors pointer-events-auto">
-              {showLog ? <X size={20} /> : <Menu size={20} />}
+              {showLog ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
             </button>
 
             {whopUser && (
