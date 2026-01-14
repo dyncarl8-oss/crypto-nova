@@ -88,7 +88,7 @@ app.get('/api/debug/headers', (req, res) => {
 });
 
 // Fallback to index.html for SPA routing
-app.get('*', (req, res) => {
+app.get('/{*path}', (req, res) => {
     res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
