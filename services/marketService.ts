@@ -1,9 +1,34 @@
 import { CRYPTOCOMPARE_API_KEY, CRYPTOCOMPARE_BASE_URL } from '../constants';
 import { OHLCV, TechnicalAnalysis, MarketRegime } from '../types';
 
+// --- SYMBOL MAPPING ---
+
+const SYMBOL_MAP: Record<string, string> = {
+  'BITCOIN': 'BTC',
+  'ETHEREUM': 'ETH',
+  'SOLANA': 'SOL',
+  'CARDANO': 'ADA',
+  'RIPPLE': 'XRP',
+  'POLKADOT': 'DOT',
+  'DOGECOIN': 'DOGE',
+  'LITECOIN': 'LTC',
+  'CHAINLINK': 'LINK',
+  'STELLAR': 'XLM',
+  'SHIBA INU': 'SHIB',
+  'AVALANCHE': 'AVAX',
+  'POLYGON': 'MATIC',
+  'TRON': 'TRX'
+};
+
+function normalizeSymbol(input: string): string {
+  const cleaned = input.trim().toUpperCase();
+  return SYMBOL_MAP[cleaned] || cleaned;
+}
+
 // --- API FETCHING ---
 
-export async function fetchOHLCV(symbol: string, limit = 300): Promise<{ candles: OHLCV[]; pair: string }> {
+export async function fetchOHLCV(rawSymbol: string, limit = 300): Promise<{ candles: OHLCV[]; pair: string }> {
+  const symbol = normalizeSymbol(rawSymbol);
   // Try USDT first, then USD
   const pairs = ['USDT', 'USD'];
   let lastError = null;
@@ -11,8 +36,10 @@ export async function fetchOHLCV(symbol: string, limit = 300): Promise<{ candles
   for (const quote of pairs) {
     try {
       const url = `${CRYPTOCOMPARE_BASE_URL}/v2/histohour?fsym=${symbol}&tsym=${quote}&limit=${limit}&api_key=${CRYPTOCOMPARE_API_KEY}`;
+      console.log(`fetchOHLCV: Calling ${url}`);
       const res = await fetch(url);
       const json = await res.json();
+      console.log(`fetchOHLCV: Response for ${symbol}/${quote}: ${json.Response}`);
 
       if (json.Response === 'Error') {
         throw new Error(json.Message);
@@ -37,17 +64,20 @@ export async function fetchOHLCV(symbol: string, limit = 300): Promise<{ candles
   throw lastError || new Error(`Failed to fetch data for ${symbol}`);
 }
 
-export async function fetchCurrentPrice(symbol: string): Promise<{ price: number; change24h: number; pair: string }> {
+export async function fetchCurrentPrice(rawSymbol: string): Promise<{ price: number; change24h: number; pair: string }> {
+  const symbol = normalizeSymbol(rawSymbol);
   const pairs = ['USDT', 'USD'];
   let lastError = null;
 
   for (const quote of pairs) {
     try {
       const url = `${CRYPTOCOMPARE_BASE_URL}/pricemultifull?fsyms=${symbol}&tsyms=${quote}&api_key=${CRYPTOCOMPARE_API_KEY}`;
+      console.log(`fetchCurrentPrice: Calling ${url}`);
       const res = await fetch(url);
       const json = await res.json();
 
       const data = json.RAW?.[symbol]?.[quote];
+      console.log(`fetchCurrentPrice: Data for ${symbol}/${quote}: ${data ? 'Found' : 'NOT FOUND'}`);
       if (!data) throw new Error(`${symbol}/${quote} not found`);
 
       return {

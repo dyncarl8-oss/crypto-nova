@@ -22,6 +22,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
   const [isSystemBusy, setIsSystemBusy] = useState(false);
+  const [isChatThinking, setIsChatThinking] = useState(false);
 
   // --- SETTINGS STATE ---
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
@@ -43,7 +44,8 @@ export default function App() {
 
   // --- HELPERS ---
   const addMessage = (role: 'user' | 'ai', text: string) => {
-    setMessages(prev => [...prev, { id: Date.now().toString(), role, text, timestamp: Date.now() }]);
+    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    setMessages(prev => [...prev, { id, role, text, timestamp: Date.now() }]);
   };
 
   const scrollToBottom = () => {
@@ -97,41 +99,69 @@ export default function App() {
   }, [selectedDeviceId]);
 
   // --- AUDIO OUTPUT HELPER ---
-  const playAudioData = async (base64Data: string) => {
-    setOrbState('speaking');
-    setVolume(0.8);
+  const playAudioData = async (base64Data: string, onStart?: () => void) => {
+    return new Promise<void>(async (resolve) => {
+      let timeout: any;
+      try {
+        setOrbState('speaking');
+        setVolume(0.8);
 
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
-    }
-    const ctx = audioContextRef.current;
+        if (!audioContextRef.current) {
+          audioContextRef.current = new AudioContext({ sampleRate: 24000 });
+        }
+        const ctx = audioContextRef.current;
 
-    // CRITICAL: Resume context if suspended
-    if (ctx.state === 'suspended') {
-      await ctx.resume();
-    }
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
 
-    nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
+        // Safety timeout to prevent hanging the chat flow
+        timeout = setTimeout(() => {
+          console.warn("Audio playback timeout reached (60s).");
+          resolve();
+        }, 60000);
 
-    const buffer = await decodeAudioData(base64ToUint8Array(base64Data), ctx, 24000);
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    source.start(nextStartTimeRef.current);
-    nextStartTimeRef.current += buffer.duration;
+        const buffer = await decodeAudioData(base64ToUint8Array(base64Data), ctx, 24000);
+        console.log(`Audio: Decoding complete. Duration: ${buffer.duration.toFixed(1)}s`);
 
-    source.onended = () => {
-      if (ctx.currentTime >= nextStartTimeRef.current - 0.1) {
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+
+        // Ensure playback starts in the future relative to the context
+        const playTime = Math.max(nextStartTimeRef.current, ctx.currentTime);
+
+        // --- SYNC POINT: Trigger callback exactly before start ---
+        if (onStart) onStart();
+
+        source.start(playTime);
+        nextStartTimeRef.current = playTime + buffer.duration;
+
+        source.onended = () => {
+          clearTimeout(timeout);
+          if (ctx.currentTime >= nextStartTimeRef.current - 0.1) {
+            setOrbState(isMicActive ? 'listening' : 'idle');
+            setVolume(0);
+          }
+          resolve();
+        };
+      } catch (err) {
+        if (timeout) clearTimeout(timeout);
+        console.error("Audio playback error:", err);
         setOrbState(isMicActive ? 'listening' : 'idle');
-        setVolume(0);
+        resolve(); // Resolve anyway to unblock the UI
       }
-    };
+    });
   };
 
-  const speak = async (text: string) => {
-    const audioData = await geminiService.generateSpeech(text);
-    if (audioData) {
-      await playAudioData(audioData);
+  const speak = async (text: string, onStart?: () => void) => {
+    try {
+      const audioData = await geminiService.generateSpeech(text);
+      if (audioData) {
+        return await playAudioData(audioData, onStart);
+      }
+    } catch (err) {
+      console.error("Speech generation error:", err);
     }
   };
 
@@ -151,12 +181,18 @@ export default function App() {
       });
 
       // Step 1: Data Collection (Slow, realistic delay)
+      console.log(`Analysis Step 1: Fetching data for ${symbol}`);
       const t0 = performance.now();
       const [priceData, ohlcvData] = await Promise.all([
         fetchCurrentPrice(symbol),
         fetchOHLCV(symbol)
       ]);
+      console.log(`Analysis Step 1: Data received for ${symbol}. Pair: ${priceData.pair}`);
       const candles = ohlcvData.candles;
+
+      if (!candles || candles.length === 0) {
+        throw new Error(`Market data for ${symbol} is currently empty or unavailable.`);
+      }
 
       await delay(1500); // 1.5s delay to "connect to exchange"
       const t1 = performance.now();
@@ -236,9 +272,16 @@ export default function App() {
       };
 
     } catch (e: any) {
-      console.error(e);
-      setMarketState(prev => ({ ...prev!, stage: AnalysisStage.ERROR }));
-      return { error: "Failed to fetch market data. " + e.message };
+      console.error("handleMarketAnalysis CRITICAL ERROR:", e);
+      setMarketState(prev => {
+        if (!prev) return null;
+        return { ...prev, stage: AnalysisStage.ERROR };
+      });
+      return {
+        error: "Failed to fetch market data. " + e.message,
+        verdict: "Error",
+        summary: "I encountered a technical error while accessing market data. Please check the system log for details."
+      };
     }
   };
 
@@ -285,7 +328,8 @@ export default function App() {
             // Audio Output
             const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (audioData) {
-              await playAudioData(audioData);
+              // NON-BLOCKING: We don't await here so the stream can keep processing
+              playAudioData(audioData);
             }
 
             // Transcript handling (Input/Output)
@@ -436,13 +480,16 @@ export default function App() {
     const text = inputText.trim();
     setInputText('');
     addMessage('user', text);
+    setIsChatThinking(true);
 
-    const analyzeMatch = text.match(/(?:analyze|check|show|price)\s+([a-zA-Z0-9]{2,})/i);
+    const analyzeMatch = text.match(/(?:analyze|check|show|price|what\s+is)\s+(?:(?:the|price|of|a)\s+)*([a-z0-9]{2,})/i);
 
     if (analyzeMatch) {
-      const symbol = analyzeMatch[1];
+      const symbol = analyzeMatch[1].toUpperCase();
+      console.log("Terminal: Initiating analysis for", symbol);
 
-      // INTERLOCK ACTIVATE
+      // 1. UNIFIED STATE & INTERLOCK
+      setOrbState('thinking');
       setIsSystemBusy(true);
       setIsMuted(true);
       if (streamRef.current) {
@@ -450,30 +497,54 @@ export default function App() {
         if (track) track.enabled = false;
       }
 
-      // Simulate AI processing for Text Input
-      setTimeout(async () => {
-        const responseText = `Executing analysis for ${symbol}.`;
-        addMessage('ai', responseText);
-        await speak(`Acknowledged. analyzing ${symbol}.`);
+      // 2. UNIFIED CINEMATIC ACKNOWLEDGEMENT
+      // Mirror the Voice Tool logic exactly
+      addMessage('ai', `Analysis Protocol Initiated: ${symbol}`);
 
-        // handleMarketAnalysis now waits for visual completion
+      setTimeout(async () => {
+        try {
+          // SYNC: Swapping "Thinking" for the analysis start message exactly when Nova starts speaking
+          await speak(
+            `Acknowledged. Accessing decentralized market feeds for ${symbol}. Initiating quantum analysis protocol. Please stand by.`,
+            () => setIsChatThinking(false)
+          );
+        } catch (e) {
+          console.warn("Terminal: Speech acknowledgement failed", e);
+          setIsChatThinking(false);
+        }
+
+        // 3. RUN ANALYSIS (Dashboard is triggered by handleMarketAnalysis)
         const result: any = await handleMarketAnalysis(symbol);
 
+        // 4. VERBAL SUMMARY
         if (result.summary) {
           await speak(result.summary);
         } else {
           await speak(`I have completed the analysis for ${symbol}. Direction is ${result.verdict}.`);
         }
-      }, 500);
+      }, 100);
     } else {
       try {
+        console.log("Terminal: Generating text response for", text);
         setOrbState('thinking');
         const responseText = await geminiService.generateTextResponse(text);
+        console.log("Terminal: Response received", responseText);
+
         setOrbState(isMicActive ? 'listening' : 'idle');
-        addMessage('ai', responseText);
-        await speak(responseText);
+
+        // SYNC: Perfect Sync Protocol - Trigger log update EXACTLY when playback starts
+        console.log("Terminal: Starting perfect sync speak...");
+        await speak(responseText, () => {
+          addMessage('ai', responseText);
+          setIsChatThinking(false);
+          console.log("Terminal: Speech started, message added to log.");
+        });
+
       } catch (e) {
-        addMessage('ai', "System busy.");
+        console.error("Terminal interaction error:", e);
+        setOrbState(isMicActive ? 'listening' : 'idle');
+        addMessage('ai', "System encountered an error processing your request.");
+        setIsChatThinking(false);
       }
     }
   };
@@ -513,6 +584,17 @@ export default function App() {
               </div>
             </div>
           ))}
+
+          {isChatThinking && (
+            <div className="flex flex-col items-start gap-1">
+              <span className="bg-emerald-950 text-emerald-500 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
+                NOVA
+              </span>
+              <div className="p-2 rounded-lg bg-emerald-900/10 border border-emerald-900/30 text-emerald-500/70 text-[10px] font-mono italic">
+                Nova is thinking
+              </div>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
 
@@ -522,10 +604,21 @@ export default function App() {
               type="text"
               value={inputText}
               onChange={e => setInputText(e.target.value)}
-              placeholder="System command line..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-4 pr-10 text-xs text-slate-300 focus:outline-none focus:border-emerald-500/50"
+              disabled={!isMicActive || isSystemBusy}
+              placeholder={!isMicActive ? "Initialize system to chat..." : isSystemBusy ? "Nova is busy..." : "System command line..."}
+              className={clsx(
+                "w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-4 pr-10 text-xs transition-all",
+                (!isMicActive || isSystemBusy) ? "text-slate-600 cursor-not-allowed opacity-50" : "text-slate-300 focus:outline-none focus:border-emerald-500/50"
+              )}
             />
-            <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-emerald-500">
+            <button
+              type="submit"
+              disabled={!isMicActive || isSystemBusy}
+              className={clsx(
+                "absolute right-2 top-1/2 -translate-y-1/2 transition-colors",
+                (!isMicActive || isSystemBusy) ? "text-slate-700 cursor-not-allowed" : "text-slate-500 hover:text-emerald-500"
+              )}
+            >
               <Send size={14} />
             </button>
           </form>

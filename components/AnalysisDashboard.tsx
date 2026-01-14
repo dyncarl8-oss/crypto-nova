@@ -249,8 +249,11 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
 
     // Determine Step Statuses
     const getStatus = (targetStage: string): 'PENDING' | 'ACTIVE' | 'COMPLETE' => {
+        // ERROR HANDLING: If we are in ERROR stage, everything before or at the error is 'COMPLETE' (failed), 
+        // but we'll show the error card separately.
+        if (stage === AnalysisStage.ERROR) return 'COMPLETE';
+
         // If the entire process is complete, everything is COMPLETE. 
-        // This ensures the Final Verdict gets a Checkmark (COMPLETE) instead of Spinning (ACTIVE).
         if (stage === AnalysisStage.COMPLETE) return 'COMPLETE';
 
         const stages = [
@@ -282,12 +285,34 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                     <p className="text-slate-500 text-xs mt-1">AI-Driven Market Intelligence • {data.symbol}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className={clsx("w-2 h-2 rounded-full", stage === AnalysisStage.COMPLETE ? "bg-slate-500" : "bg-emerald-500 animate-pulse")} />
-                    <span className={clsx("text-xs font-mono", stage === AnalysisStage.COMPLETE ? "text-slate-500" : "text-emerald-500")}>
-                        {stage === AnalysisStage.COMPLETE ? 'COMPLETE' : 'PROCESSING'}
+                    <div className={clsx("w-2 h-2 rounded-full",
+                        stage === AnalysisStage.COMPLETE ? "bg-slate-500" :
+                            stage === AnalysisStage.ERROR ? "bg-red-500" : "bg-emerald-500 animate-pulse")} />
+                    <span className={clsx("text-xs font-mono",
+                        stage === AnalysisStage.COMPLETE ? "text-slate-500" :
+                            stage === AnalysisStage.ERROR ? "text-red-500" : "text-emerald-500")}>
+                        {stage === AnalysisStage.COMPLETE ? 'COMPLETE' : stage === AnalysisStage.ERROR ? 'FAILED' : 'PROCESSING'}
                     </span>
                 </div>
             </div>
+
+            {/* ERROR VIEW */}
+            {stage === AnalysisStage.ERROR && (
+                <div className="mb-8 p-6 bg-red-950/20 border border-red-900/50 rounded-2xl animate-in fade-in zoom-in duration-500">
+                    <div className="flex items-center gap-3 mb-4 text-red-400">
+                        <AlertTriangle className="animate-pulse" size={24} />
+                        <h2 className="text-xl font-bold uppercase tracking-tight">Protocol Failure</h2>
+                    </div>
+                    <p className="text-red-200/70 text-sm leading-relaxed mb-4 font-mono">
+                        The neural link encountered an interruption during high-frequency data ingestion.
+                        Live feeds for <span className="text-red-400 font-bold">{data.symbol}</span> are currently unreachable.
+                    </p>
+                    <div className="flex gap-4 p-3 bg-red-900/10 rounded-lg border border-red-900/20">
+                        <div className="text-[10px] text-red-500/50 uppercase font-bold">System Recommendation</div>
+                        <div className="text-xs text-red-300 font-mono italic">Retry analysis in 60s or check exchange connectivity.</div>
+                    </div>
+                </div>
+            )}
 
             {/* STEP 1: DATA COLLECTION */}
             <AnalysisStep
