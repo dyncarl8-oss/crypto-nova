@@ -636,31 +636,8 @@ export default function App() {
             <Terminal className="text-emerald-500" size={18} />
             <span className="text-sm font-mono tracking-wider text-slate-300">SYSTEM LOG</span>
           </div>
-          <button onClick={() => setShowLog(false)} className="md:hidden p-2"><X size={16} /></button>
+          <button onClick={() => setShowLog(false)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors"><X size={16} /></button>
         </div>
-
-        {/* PROFILE SECTION */}
-        {whopUser && (
-          <div className="p-4 border-b border-slate-800/50 bg-slate-900/20">
-            <div className="flex items-center gap-3 p-3 bg-slate-900/50 rounded-xl border border-slate-800/50 shadow-inner">
-              {whopUser.profile_picture ? (
-                <img src={whopUser.profile_picture} alt={whopUser.name} className="w-10 h-10 rounded-lg object-cover ring-2 ring-emerald-500/20 shadow-lg" />
-              ) : (
-                <div className="w-10 h-10 bg-gradient-to-br from-slate-700 to-slate-800 rounded-lg flex items-center justify-center text-sm text-slate-400 font-bold border border-slate-700 shadow-lg">
-                  {whopUser.name[0]}
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-slate-100 truncate tracking-tight">{whopUser.name}</p>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" />
-                  <p className="text-[10px] font-mono text-emerald-500/60 truncate uppercase tracking-widest">@{whopUser.username}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs custom-scrollbar">
           {messages.map(m => (
             <div key={m.id} className={clsx("flex flex-col gap-1", m.role === 'user' ? "items-end" : "items-start")}>
@@ -725,11 +702,9 @@ export default function App() {
 
         <div className="h-16 px-6 flex items-center justify-between z-30 pointer-events-none">
           <div className="flex items-center gap-4 pointer-events-auto">
-            {!showLog && (
-              <button onClick={() => setShowLog(true)} className="p-2 bg-slate-900/50 border border-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
-                <Menu size={20} />
-              </button>
-            )}
+            <button onClick={() => setShowLog(!showLog)} className="p-2 bg-slate-900/50 border border-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors pointer-events-auto">
+              {showLog ? <X size={20} /> : <Menu size={20} />}
+            </button>
 
             {whopUser && (
               <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-4 duration-500">
@@ -901,6 +876,6 @@ export default function App() {
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 }
