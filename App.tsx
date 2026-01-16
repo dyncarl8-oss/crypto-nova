@@ -50,6 +50,7 @@ export default function App() {
   // Synchronization Ref: Holds the resolve function for the visual animation promise
   const visualCompleteResolverRef = useRef<(() => void) | null>(null);
   const orbStateRef = useRef(orbState);
+  const isSessionReadyRef = useRef(false);
 
   // Sync ref with state
   useEffect(() => {
@@ -447,6 +448,7 @@ export default function App() {
         callbacks: {
           onopen: () => {
             console.log("Connected to Gemini Live");
+            isSessionReadyRef.current = true;
             setOrbState('listening');
             setError(null);
             currentModelResponseRef.current = '';
@@ -491,13 +493,15 @@ export default function App() {
                     addMessage('ai', "Insufficient credits for analysis.");
                     await speak("I'm sorry, you have insufficient credits. Please upgrade your plan.");
 
-                    session.sendToolResponse({
-                      functionResponses: [{
-                        id: call.id,
-                        name: call.name,
-                        response: { result: { error: "Insufficient credits" } }
-                      }]
-                    });
+                    if (isSessionReadyRef.current) {
+                      session.sendToolResponse({
+                        functionResponses: [{
+                          id: call.id,
+                          name: call.name,
+                          response: { result: { error: "Insufficient credits" } }
+                        }]
+                      });
+                    }
                     continue;
                   }
 
@@ -534,15 +538,22 @@ export default function App() {
                   });
                 }
               }
-              session.sendToolResponse({ functionResponses: responses });
+              if (isSessionReadyRef.current) {
+                session.sendToolResponse({ functionResponses: responses });
+              } else {
+                console.warn("Skipping ToolResponse: Session not ready.");
+              }
             }
           },
-          onclose: () => {
+          onclose: (event) => {
+            console.warn("Gemini Live session closed:", event);
+            isSessionReadyRef.current = false;
             setOrbState('idle');
             setIsMicActive(false);
           },
           onerror: (e) => {
-            console.error(e);
+            console.error("Gemini Live session error:", e);
+            isSessionReadyRef.current = false;
             setError("Session Error: " + (e.message || "Unknown error"));
             setOrbState('idle');
             setIsMicActive(false);
@@ -585,7 +596,8 @@ export default function App() {
       const processor = audioCtx.createScriptProcessor(4096, 1, 1);
 
       processor.onaudioprocess = (e) => {
-        if (!sessionRef.current) return;
+        // CRITICAL: Only send if the session is fully open and active
+        if (!sessionRef.current || !isSessionReadyRef.current) return;
 
         const inputData = e.inputBuffer.getChannelData(0);
         let sum = 0;
@@ -599,7 +611,7 @@ export default function App() {
             const pcmBlob = createPcmBlob(inputData, 16000);
             sessionRef.current.sendRealtimeInput({ media: pcmBlob });
           } catch (err) {
-            console.warn("Realtime input send failed (likely closed):", err);
+            console.warn("Realtime input send failed (likely closed during process):", err);
           }
         }
       };
@@ -631,6 +643,7 @@ export default function App() {
       sourceRef.current?.disconnect();
 
       if (sessionRef.current) {
+        isSessionReadyRef.current = false;
         sessionRef.current.close();
         sessionRef.current = null;
       }
