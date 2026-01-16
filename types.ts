@@ -160,6 +160,8 @@ export interface WhopUser {
   username: string;
   name: string;
   profile_picture?: string;
+  credits?: number;
+  isUnlimited?: boolean;
 }
 
 export interface WhopAccess {

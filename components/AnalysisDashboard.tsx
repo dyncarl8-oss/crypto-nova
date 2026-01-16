@@ -477,7 +477,7 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                 subtitle="Institutional News Audit"
                 status={getStatus(AnalysisStage.SENTIMENT_AUDIT)}
             >
-                {getStatus(AnalysisStage.SENTIMENT_AUDIT) === 'PENDING' ? (
+                {getStatus(AnalysisStage.SENTIMENT_AUDIT) !== 'COMPLETE' ? (
                     <div className="flex items-center gap-3 p-3 bg-slate-900/30 rounded-lg border border-slate-800/50">
                         <Loader2 className="animate-spin text-blue-500" size={16} />
                         <span className="text-xs text-slate-500 font-mono animate-pulse">Scanning global media sources...</span>

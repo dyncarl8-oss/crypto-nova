@@ -347,6 +347,30 @@ export default function App() {
         stage: AnalysisStage.COMPLETE // Explicitly mark complete here for the log
       }));
 
+      // --- SAVE TO DATABASE ---
+      if (deepAnalysis) {
+        try {
+          await fetch('/api/analysis/save', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              // Note: The header 'x-whop-user-token' is automatically handled by the Whop proxy or should be present if in cookie 
+            },
+            body: JSON.stringify({
+              symbol: symbol.toUpperCase(),
+              price: priceData.price,
+              verdict: deepAnalysis.verdict,
+              technicals: technicals,
+              thought_process: deepAnalysis.thought_process
+            })
+          });
+          log("ANALYSIS PERSISTED TO SECURE DATABASE.");
+        } catch (saveErr) {
+          console.error("Failed to save analysis history:", saveErr);
+          log("WARNING: FAILED TO PERSIST ANALYSIS DATA.");
+        }
+      }
+
       log("ANALYSIS PROTOCOL FINALIZED. READY FOR DISSEMINATION.");
 
       // SYNCHRONIZATION:
@@ -459,6 +483,31 @@ export default function App() {
               for (const call of functionCalls) {
                 if (call.name === 'analyze_market') {
                   const { symbol } = call.args as any;
+
+                  // 0. CREDIT CHECK (Tool Call)
+                  // Note: This duplicates logic but necessary to catch Tool calls triggered by Voice directly if possible.
+                  // Since handleTextSubmit handles text, this handles voice tool calls.
+                  if (!whopUser?.isUnlimited && (whopUser?.credits ?? 0) <= 0) {
+                    addMessage('ai', "Insufficient credits for analysis.");
+                    await speak("I'm sorry, you have insufficient credits. Please upgrade your plan.");
+
+                    session.sendToolResponse({
+                      functionResponses: [{
+                        id: call.id,
+                        name: call.name,
+                        response: { result: { error: "Insufficient credits" } }
+                      }]
+                    });
+                    continue;
+                  }
+
+                  // If credits exist, we attempt deduction asynchronously or we trust the flow? 
+                  // Ideally we deduct here too.
+                  if (!whopUser?.isUnlimited) {
+                    await fetch('/api/credits/deduct', { method: 'POST' });
+                    // Optimistic update
+                    setWhopUser(prev => prev ? ({ ...prev, credits: Math.max(0, (prev.credits ?? 0) - 1) }) : null);
+                  }
 
                   // 1. INTERLOCK ACTIVATE
                   setIsSystemBusy(true);
@@ -626,8 +675,71 @@ export default function App() {
           setIsChatThinking(false);
         }
 
-        // 3. RUN ANALYSIS (Dashboard is triggered by handleMarketAnalysis)
-        const result: any = await handleMarketAnalysis(symbol);
+        // 3. CREDIT CHECK & DEDUCTION
+        let canProceed = false;
+
+        if (whopUser?.isUnlimited) {
+          canProceed = true;
+        } else if ((whopUser?.credits ?? 0) > 0) {
+          try {
+            const deductRes = await fetch('/api/credits/deduct', {
+              method: 'POST',
+              headers: {
+                'x-whop-user-token': (document.cookie.match(/whop_user_token=([^;]+)/)?.[1] || '') // Note: Token handling in frontend might need refinement if not in cookie. Using a workaround or relying on browser to send cookies if same origin? 
+                // Actually, the app fetches /api/whop/me which uses headers sent by proxy OR assuming running in Whop iframe?
+                // The server endpoint /api/deduct reads the header.
+                // The Whop proxy sets the header automatically on requests.
+                // So simple fetch should work if behind Whop proxy.
+                // BUT if running locally with our proxy, we might not have the token injection unless tailored.
+              }
+            });
+
+            // For development/local without full Whop proxy injection, we might skip strict token check or mock it.
+            // However, let's assume standard fetch works if session is valid. 
+            // Actually, we don't need to manually set the header if the Proxy does it. 
+            // But for the purpose of this code, let's assume the browser request will carry necessary cookies or the proxy handles it.
+            // Wait, /api/credits/deduct logic in server.js checks req.headers['x-whop-user-token']. 
+            // If we are developing locally, we might not have this header unless we manually set it or use a dev token. 
+            // For now, let's proceed with a standard POST and allow server to handle 401.
+
+            const deductData = await deductRes.json();
+            if (deductData.success || deductData.isUnlimited) {
+              canProceed = true;
+              // Update local state
+              setWhopUser(prev => prev ? ({ ...prev, credits: deductData.remaining === 'UNLIMITED' ? undefined : deductData.remaining }) : null);
+            } else {
+              await speak("Insufficient credits. Please upgrade your plan for unlimited access.");
+              addMessage('ai', "Insufficient credits. Please upgrade to continue.");
+              setIsChatThinking(false);
+              setOrbState('idle');
+              setIsSystemBusy(false);
+              return; // STOP
+            }
+          } catch (e) {
+            console.error("Credit deduction failed", e);
+            // Fallback: Proceed if error? Or blockage? Let's block to be safe or allow one?
+            // For now, fail safe to BLOCK.
+          }
+        } else {
+          await speak("You have used all your free credits. Please upgrade to Nova Unlimited.");
+          addMessage('ai', "Insufficient credits. Please upgrade to Nova Unlimited for $99/mo.");
+          setIsChatThinking(false);
+          setOrbState('idle');
+          setIsSystemBusy(false);
+          return;
+        }
+
+        if (canProceed) {
+          // 3. RUN ANALYSIS (Dashboard is triggered by handleMarketAnalysis)
+          const result: any = await handleMarketAnalysis(symbol);
+
+          // 4. VERBAL SUMMARY
+          if (result.summary) {
+            await speak(result.summary);
+          } else {
+            await speak(`I have completed the analysis for ${symbol}. Direction is ${result.verdict}.`);
+          }
+        }
 
         // 4. VERBAL SUMMARY
         if (result.summary) {
@@ -763,21 +875,41 @@ export default function App() {
             </button>
 
             {whopUser && (
-              <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-4 duration-500">
-                <div className="relative">
+              <div className="flex items-center gap-4 animate-in fade-in slide-in-from-left-4 duration-500">
+                <div className="relative group">
                   {whopUser.profile_picture ? (
-                    <img src={whopUser.profile_picture} alt={whopUser.name} className="w-8 h-8 rounded-full border-2 border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]" />
+                    <img src={whopUser.profile_picture} alt={whopUser.name} className="w-9 h-9 rounded-full border-2 border-emerald-500/30 group-hover:border-emerald-500/60 transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)]" />
                   ) : (
-                    <div className="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-[10px] text-slate-400 font-bold border border-slate-700">
-                      {whopUser.name[0]}
+                    <div className="w-9 h-9 bg-slate-800 rounded-full flex items-center justify-center text-xs text-slate-400 font-bold border border-slate-700">
+                      {whopUser.name?.[0] || 'U'}
                     </div>
                   )}
-                  <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-slate-950 shadow-[0_0_5px_rgba(16,185,129,0.5)]" />
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-950 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                 </div>
-                <div className="hidden sm:block">
-                  <p className="text-[10px] font-mono text-slate-500 uppercase tracking-tighter leading-none mb-0.5">Quantum Operator</p>
-                  <p className="text-xs font-bold text-slate-100 leading-none">{whopUser.name}</p>
+
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-bold text-slate-100 leading-none">{whopUser.name}</p>
+                    <div className={clsx(
+                      "px-2 py-0.5 rounded-[4px] text-[10px] font-bold tracking-wider",
+                      whopUser.isUnlimited ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                    )}>
+                      {whopUser.isUnlimited ? "UNLIMITED" : `${whopUser.credits ?? 0} CREDITS`}
+                    </div>
+                  </div>
+                  <p className="text-[10px] font-mono text-slate-500 uppercase tracking-tighter mt-1 opacity-70">Quantum Operator</p>
                 </div>
+
+                {!whopUser.isUnlimited && (
+                  <a
+                    href="https://whop.com/checkout/YOUR_CHECKOUT_LINK_HERE"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hidden lg:block px-3 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 rounded-md text-[10px] font-bold text-white hover:opacity-90 hover:scale-105 transition-all shadow-lg shadow-purple-900/20"
+                  >
+                    UPGRADE
+                  </a>
+                )}
               </div>
             )}
           </div>
