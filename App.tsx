@@ -583,6 +583,8 @@ export default function App() {
       const processor = audioCtx.createScriptProcessor(4096, 1, 1);
 
       processor.onaudioprocess = (e) => {
+        if (!sessionRef.current) return;
+
         const inputData = e.inputBuffer.getChannelData(0);
         let sum = 0;
         for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
@@ -591,8 +593,12 @@ export default function App() {
 
         // STRICT TURN-TAKING: Only send audio if Nova is NOT speaking or thinking
         if (orbStateRef.current === 'listening' || orbStateRef.current === 'idle') {
-          const pcmBlob = createPcmBlob(inputData, 16000);
-          session.sendRealtimeInput({ media: pcmBlob });
+          try {
+            const pcmBlob = createPcmBlob(inputData, 16000);
+            sessionRef.current.sendRealtimeInput({ media: pcmBlob });
+          } catch (err) {
+            console.warn("Realtime input send failed (likely closed):", err);
+          }
         }
       };
 
@@ -611,10 +617,18 @@ export default function App() {
   };
 
   const stopMic = () => {
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    scriptProcessorRef.current?.disconnect();
-    sourceRef.current?.disconnect();
-    sessionRef.current?.close();
+    try {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      scriptProcessorRef.current?.disconnect();
+      sourceRef.current?.disconnect();
+
+      if (sessionRef.current) {
+        sessionRef.current.close();
+        sessionRef.current = null;
+      }
+    } catch (e) {
+      console.error("Cleanup error during stopMic:", e);
+    }
 
     // FULL SESSION RESET
     setIsMicActive(false);
