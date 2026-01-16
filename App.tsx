@@ -576,7 +576,9 @@ export default function App() {
       streamRef.current = stream;
 
       const session = await connectLive();
-      if (!session) return;
+      if (!session) {
+        throw new Error("Core session failed to initialize. Please check your connection.");
+      }
 
       const audioCtx = new AudioContext({ sampleRate: 16000 });
       const source = audioCtx.createMediaStreamSource(stream);
@@ -607,12 +609,18 @@ export default function App() {
 
       sourceRef.current = source;
       scriptProcessorRef.current = processor;
+
+      // ONLY set active once EVERYTHING is connected
       setIsMicActive(true);
       setIsMuted(false);
 
     } catch (e: any) {
-      setError("Microphone error: " + e.message);
+      console.error("CRITICAL CONNECTION FAILURE:", e);
+      setError("System failed to initialize: " + (e.message || "Unknown error"));
       setIsMicActive(false);
+
+      // Cleanup any partial success
+      streamRef.current?.getTracks().forEach(t => t.stop());
     }
   };
 

@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api/whop': 'http://localhost:3001',
         '/api/credits': 'http://localhost:3001',
+        '/api/analysis': 'http://localhost:3001',
         '/api/debug': 'http://localhost:3001'
       }
     },
