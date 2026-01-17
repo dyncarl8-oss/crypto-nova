@@ -1154,5 +1154,37 @@ export default function App() {
         )}
       </div>
     </div >
+
+    {/* WHOP CHECKOUT MODAL */ }
+  {
+    showCheckoutModal && checkoutSessionId && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" onClick={() => setShowCheckoutModal(false)} />
+        <div className="relative w-full max-w-lg bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
+          <div className="flex items-center justify-between p-4 border-b border-white/5 bg-slate-900/50">
+            <h3 className="text-white font-medium flex items-center gap-2">
+              <Zap className="w-4 h-4 text-emerald-400" />
+              Upgrade to Nova Unlimited
+            </h3>
+            <button
+              onClick={() => setShowCheckoutModal(false)}
+              className="p-1 hover:bg-white/5 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
+          <div className="p-0 bg-black" style={{ minHeight: '600px', height: '80vh' }}>
+            <WhopCheckoutEmbed
+              sessionId={checkoutSessionId}
+              onComplete={() => {
+                setShowCheckoutModal(false);
+                window.location.reload();
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    )
+  }
   );
 }
