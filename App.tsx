@@ -858,333 +858,333 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500/30 overflow-hidden">
+    <>
+      <div className="flex h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500/30 overflow-hidden">
 
-      {/* Background */}
-      <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-900/10 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-emerald-900/10 rounded-full blur-[120px]" />
-      </div>
+        {/* Background */}
+        <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
+          <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-900/10 rounded-full blur-[120px]" />
+          <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-emerald-900/10 rounded-full blur-[120px]" />
+        </div>
 
-      {/* SIDEBAR */}
-      <div className={clsx(
-        "fixed inset-y-0 left-0 z-40 w-[320px] bg-slate-950/90 backdrop-blur-xl border-r border-slate-800 transition-transform duration-300 flex flex-col shadow-2xl",
-        showLog ? "translate-x-0" : "-translate-x-full"
-      )}>
-        <div className="h-16 flex items-center px-4 border-b border-slate-800/50 bg-slate-900/40">
-          <div className="flex items-center gap-3">
-            <Terminal className="text-emerald-500" size={18} />
-            <span className="text-sm font-mono tracking-wider text-slate-300">SYSTEM LOG</span>
+        {/* SIDEBAR */}
+        <div className={clsx(
+          "fixed inset-y-0 left-0 z-40 w-[320px] bg-slate-950/90 backdrop-blur-xl border-r border-slate-800 transition-transform duration-300 flex flex-col shadow-2xl",
+          showLog ? "translate-x-0" : "-translate-x-full"
+        )}>
+          <div className="h-16 flex items-center px-4 border-b border-slate-800/50 bg-slate-900/40">
+            <div className="flex items-center gap-3">
+              <Terminal className="text-emerald-500" size={18} />
+              <span className="text-sm font-mono tracking-wider text-slate-300">SYSTEM LOG</span>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs custom-scrollbar">
+            {messages.map(m => (
+              <div key={m.id} className={clsx("flex flex-col gap-1", m.role === 'user' ? "items-end" : "items-start")}>
+                <span className={clsx("px-2 py-0.5 rounded text-[10px] uppercase font-bold",
+                  m.role === 'user' ? "bg-slate-800 text-slate-400" : "bg-emerald-950 text-emerald-500")}>
+                  {m.role === 'user' ? 'USER' : 'NOVA'}
+                </span>
+                <div className={clsx("p-2 rounded-lg max-w-[95%] break-words border",
+                  m.role === 'user' ? "bg-slate-900/50 border-slate-800" : "bg-emerald-900/10 border-emerald-900/30")}>
+                  {m.text}
+                </div>
+              </div>
+            ))}
+
+            {isChatThinking && (
+              <div className="flex flex-col items-start gap-1">
+                <span className="bg-emerald-950 text-emerald-500 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
+                  NOVA
+                </span>
+                <div className="p-2 rounded-lg bg-emerald-900/10 border border-emerald-900/30 text-emerald-500/70 text-[10px] font-mono italic">
+                  Nova is thinking
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <div className="p-4 bg-slate-900/80 border-t border-slate-800/50">
+            <form onSubmit={handleTextSubmit} className="relative">
+              <input
+                type="text"
+                value={inputText}
+                onChange={e => setInputText(e.target.value)}
+                disabled={!isMicActive || isSystemBusy}
+                placeholder={!isMicActive ? "Initialize system to chat..." : isSystemBusy ? "Nova is busy..." : "System command line..."}
+                className={clsx(
+                  "w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-4 pr-10 text-xs transition-all",
+                  (!isMicActive || isSystemBusy) ? "text-slate-600 cursor-not-allowed opacity-50" : "text-slate-300 focus:outline-none focus:border-emerald-500/50"
+                )}
+              />
+              <button
+                type="submit"
+                disabled={!isMicActive || isSystemBusy}
+                className={clsx(
+                  "absolute right-2 top-1/2 -translate-y-1/2 transition-colors",
+                  (!isMicActive || isSystemBusy) ? "text-slate-700 cursor-not-allowed" : "text-slate-500 hover:text-emerald-500"
+                )}
+              >
+                <Send size={14} />
+              </button>
+            </form>
+            <div className="mt-3 text-center px-2">
+              <p className="text-[10px] font-mono text-slate-500/50 tracking-wider">
+                Tips: Use voice mode for faster response.
+              </p>
+            </div>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs custom-scrollbar">
-          {messages.map(m => (
-            <div key={m.id} className={clsx("flex flex-col gap-1", m.role === 'user' ? "items-end" : "items-start")}>
-              <span className={clsx("px-2 py-0.5 rounded text-[10px] uppercase font-bold",
-                m.role === 'user' ? "bg-slate-800 text-slate-400" : "bg-emerald-950 text-emerald-500")}>
-                {m.role === 'user' ? 'USER' : 'NOVA'}
-              </span>
-              <div className={clsx("p-2 rounded-lg max-w-[95%] break-words border",
-                m.role === 'user' ? "bg-slate-900/50 border-slate-800" : "bg-emerald-900/10 border-emerald-900/30")}>
-                {m.text}
-              </div>
-            </div>
-          ))}
 
-          {isChatThinking && (
-            <div className="flex flex-col items-start gap-1">
-              <span className="bg-emerald-950 text-emerald-500 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
-                NOVA
-              </span>
-              <div className="p-2 rounded-lg bg-emerald-900/10 border border-emerald-900/30 text-emerald-500/70 text-[10px] font-mono italic">
-                Nova is thinking
+        {/* MAIN CONTENT */}
+        <div className={clsx("flex-1 flex flex-col relative z-10 transition-all duration-300 h-full", showLog ? "ml-[320px]" : "ml-0")}>
+
+          <div className="h-16 px-6 flex items-center justify-between z-30 pointer-events-none">
+            {/* LEFT: Sidebar Toggle + Profile */}
+            <div className="flex items-center gap-4 pointer-events-auto">
+              <button onClick={() => setShowLog(!showLog)} className="p-1 text-slate-500 hover:text-white transition-all duration-300 hover:bg-white/5 rounded-md pointer-events-auto flex items-center justify-center">
+                {showLog ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+              </button>
+
+              {whopUser && (
+                <div className="flex items-center gap-4 animate-in fade-in slide-in-from-left-4 duration-500">
+                  <div className="relative group">
+                    {whopUser.profile_picture ? (
+                      <img src={whopUser.profile_picture} alt={whopUser.name} className="w-9 h-9 rounded-full border-2 border-emerald-500/30 group-hover:border-emerald-500/60 transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)]" />
+                    ) : (
+                      <div className="w-9 h-9 bg-slate-800 rounded-full flex items-center justify-center text-xs text-slate-400 font-bold border border-slate-700">
+                        {whopUser.name?.[0] || 'U'}
+                      </div>
+                    )}
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-950 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                  </div>
+
+                  <div className="flex flex-col">
+                    <p className="text-xs font-bold text-slate-100 leading-none mb-1">{whopUser.name}</p>
+                    <p className="text-[10px] font-mono text-slate-500/40 uppercase tracking-[0.15em] font-medium italic">Quantum Operator</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* RIGHT: Credits + Upgrade + Error */}
+            <div className="flex items-center gap-4 pointer-events-auto">
+              {whopUser && (
+                <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-500">
+                  <div className={clsx(
+                    "flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-tight border shadow-sm transition-all",
+                    whopUser.isUnlimited
+                      ? "bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-purple-900/10"
+                      : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-emerald-900/10"
+                  )}>
+                    <Zap size={10} className={clsx("fill-current", whopUser.isUnlimited ? "text-purple-400" : "text-emerald-400")} />
+                    <span>{whopUser.isUnlimited ? "UNLIMITED" : `${whopUser.credits ?? 0} CREDITS`}</span>
+                  </div>
+
+                  {!whopUser.isUnlimited && (
+                    <button
+                      onClick={handleUpgradeClick}
+                      disabled={isCheckoutLoading}
+                      className="hidden lg:block px-4 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 rounded-md text-[10px] font-bold text-white hover:opacity-90 hover:scale-105 transition-all shadow-lg shadow-purple-900/20 disabled:opacity-50"
+                    >
+                      {isCheckoutLoading ? '...' : 'UPGRADE'}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {error && <div className="px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs backdrop-blur-md">{error}</div>}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-hidden relative">
+            <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
+
+              {/* IDLE STATE */}
+              {!marketState && !isMicActive && (
+                <div className="flex flex-col items-center justify-center h-full space-y-8 animate-in fade-in zoom-in duration-700">
+                  <div className="relative w-32 h-32 md:w-48 md:h-48">
+                    <VoiceOrb state="idle" volume={0} />
+                  </div>
+                  <div className="text-center">
+                    <h1 className="text-5xl font-extralight text-white tracking-[0.2em] mb-2">NOVA</h1>
+                    <div className="text-xs font-mono text-emerald-500 tracking-[0.3em] uppercase opacity-80">Quantum Market Intelligence</div>
+                  </div>
+                  <button
+                    onClick={startMic}
+                    className="group relative px-10 py-5 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full text-slate-950 font-bold tracking-widest hover:scale-105 transition-all flex items-center gap-3 z-20"
+                  >
+                    <Power size={20} /> INITIALIZE SYSTEM
+                  </button>
+                </div>
+              )}
+
+              {/* ACTIVE SESSION STATE (Orb + Dynamic Labels) */}
+              {!marketState && isMicActive && (
+                <div className="flex flex-col items-center justify-center h-full space-y-8 mt-[-60px]">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-80 h-80 relative">
+                      <VoiceOrb state={orbState} volume={volume} />
+                    </div>
+                    {orbState === 'listening' && <TypewriterHint />}
+                  </div>
+                  <div className="text-2xl font-light text-white tracking-[0.2em] uppercase animate-pulse">
+                    {orbState === 'speaking' ? 'Speaking...' :
+                      orbState === 'thinking' ? 'Thinking...' : 'Listening...'}
+                  </div>
+                </div>
+              )}
+
+              {/* DASHBOARD */}
+              {marketState && (
+                <AnalysisDashboard
+                  data={marketState}
+                  onTypingComplete={handleAnalysisVisualComplete}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* DOCK */}
+          {(isMicActive || marketState) && (
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50">
+              <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-700/50 rounded-full p-2 pr-6 shadow-2xl flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-slate-950/50 border border-slate-800 overflow-hidden relative flex items-center justify-center">
+                  <div className="w-full h-full scale-150 opacity-80"><VoiceOrb state={orbState} volume={volume} /></div>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Voice Link</span>
+                  <span className={clsx("text-xs font-mono", isMicActive ? "text-emerald-400" : "text-red-400")}>
+                    {isMicActive ? (isMuted ? 'MUTED' : 'CONNECTED') : 'PAUSED'}
+                  </span>
+                </div>
+                <div className="h-8 w-px bg-slate-700/50 mx-2" />
+
+                {/* End Call */}
+                <button
+                  onClick={stopMic}
+                  disabled={isSystemBusy}
+                  className={clsx(
+                    "h-10 w-10 rounded-full flex items-center justify-center transition-all shadow-lg",
+                    isSystemBusy
+                      ? "bg-slate-800 text-slate-600 cursor-not-allowed"
+                      : "bg-red-500 text-white shadow-red-500/20 hover:bg-red-600 hover:scale-110"
+                  )}
+                  title={isSystemBusy ? "Analysis in Progress" : "End Call"}
+                >
+                  <Phone size={20} className="rotate-[135deg]" />
+                </button>
+
+                {/* Mute Toggle */}
+                <button
+                  onClick={toggleMute}
+                  disabled={isSystemBusy}
+                  className={clsx("h-10 w-10 rounded-full flex items-center justify-center transition-all",
+                    isSystemBusy
+                      ? "bg-slate-800 text-slate-600 cursor-not-allowed"
+                      : isMuted
+                        ? "bg-slate-700 text-slate-400"
+                        : "bg-emerald-500 text-slate-900 shadow-lg shadow-emerald-500/20"
+                  )}
+                  title={isSystemBusy ? "Analysis in Progress" : (isMuted ? "Unmute" : "Mute")}
+                >
+                  {isMuted ? <MicOff size={18} /> : <Mic size={18} />}
+                </button>
+
+                {/* Device Selector Toggle */}
+                <div className="relative">
+                  <button
+                    onClick={() => !isSystemBusy && setShowSettings(!showSettings)}
+                    disabled={isSystemBusy}
+                    className={clsx("p-2 rounded-full transition-colors",
+                      isSystemBusy ? "text-slate-700 cursor-not-allowed" :
+                        showSettings ? "bg-slate-800 text-emerald-400" : "text-slate-500 hover:text-slate-300"
+                    )}
+                  >
+                    <Settings size={16} />
+                  </button>
+
+                  {/* Popup Menu */}
+                  {showSettings && (
+                    <div className="absolute bottom-full right-0 mb-4 w-64 bg-slate-900/90 backdrop-blur-xl border border-slate-700/50 rounded-xl p-2 shadow-2xl flex flex-col gap-1 z-[60]">
+                      <div className="px-2 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        Select Microphone
+                      </div>
+                      {audioDevices.map(device => (
+                        <button
+                          key={device.deviceId}
+                          onClick={async () => {
+                            const deviceId = device.deviceId;
+                            setSelectedDeviceId(deviceId);
+                            setShowSettings(false);
+
+                            if (isMicActive) {
+                              try {
+                                console.log("Hot-swapping microphone...");
+                                cleanupAudioResources();
+                                await startAudioStream(deviceId);
+                                console.log("Mic hot-swapped successfully.");
+                              } catch (e: any) {
+                                console.error("Hot-swap failed:", e);
+                                setError("Failed to switch microphone: " + e.message);
+                                stopMic(); // Hard reset if hot swap fails
+                              }
+                            }
+                          }}
+                          className={clsx(
+                            "flex items-center justify-between px-3 py-2 rounded-lg text-xs text-left transition-colors",
+                            selectedDeviceId === device.deviceId
+                              ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                              : "hover:bg-slate-800 text-slate-300"
+                          )}
+                        >
+                          <span className="truncate max-w-[180px]">{device.label || `Microphone ${device.deviceId.slice(0, 4)}...`}</span>
+                          {selectedDeviceId === device.deviceId && <Check size={12} />}
+                        </button>
+                      ))}
+
+                      {audioDevices.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-slate-500 italic">No devices found</div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        <div className="p-4 bg-slate-900/80 border-t border-slate-800/50">
-          <form onSubmit={handleTextSubmit} className="relative">
-            <input
-              type="text"
-              value={inputText}
-              onChange={e => setInputText(e.target.value)}
-              disabled={!isMicActive || isSystemBusy}
-              placeholder={!isMicActive ? "Initialize system to chat..." : isSystemBusy ? "Nova is busy..." : "System command line..."}
-              className={clsx(
-                "w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-4 pr-10 text-xs transition-all",
-                (!isMicActive || isSystemBusy) ? "text-slate-600 cursor-not-allowed opacity-50" : "text-slate-300 focus:outline-none focus:border-emerald-500/50"
-              )}
-            />
-            <button
-              type="submit"
-              disabled={!isMicActive || isSystemBusy}
-              className={clsx(
-                "absolute right-2 top-1/2 -translate-y-1/2 transition-colors",
-                (!isMicActive || isSystemBusy) ? "text-slate-700 cursor-not-allowed" : "text-slate-500 hover:text-emerald-500"
-              )}
-            >
-              <Send size={14} />
-            </button>
-          </form>
-          <div className="mt-3 text-center px-2">
-            <p className="text-[10px] font-mono text-slate-500/50 tracking-wider">
-              Tips: Use voice mode for faster response.
-            </p>
-          </div>
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
-      <div className={clsx("flex-1 flex flex-col relative z-10 transition-all duration-300 h-full", showLog ? "ml-[320px]" : "ml-0")}>
-
-        <div className="h-16 px-6 flex items-center justify-between z-30 pointer-events-none">
-          {/* LEFT: Sidebar Toggle + Profile */}
-          <div className="flex items-center gap-4 pointer-events-auto">
-            <button onClick={() => setShowLog(!showLog)} className="p-1 text-slate-500 hover:text-white transition-all duration-300 hover:bg-white/5 rounded-md pointer-events-auto flex items-center justify-center">
-              {showLog ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
-            </button>
-
-            {whopUser && (
-              <div className="flex items-center gap-4 animate-in fade-in slide-in-from-left-4 duration-500">
-                <div className="relative group">
-                  {whopUser.profile_picture ? (
-                    <img src={whopUser.profile_picture} alt={whopUser.name} className="w-9 h-9 rounded-full border-2 border-emerald-500/30 group-hover:border-emerald-500/60 transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)]" />
-                  ) : (
-                    <div className="w-9 h-9 bg-slate-800 rounded-full flex items-center justify-center text-xs text-slate-400 font-bold border border-slate-700">
-                      {whopUser.name?.[0] || 'U'}
-                    </div>
-                  )}
-                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-950 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                </div>
-
-                <div className="flex flex-col">
-                  <p className="text-xs font-bold text-slate-100 leading-none mb-1">{whopUser.name}</p>
-                  <p className="text-[10px] font-mono text-slate-500/40 uppercase tracking-[0.15em] font-medium italic">Quantum Operator</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* RIGHT: Credits + Upgrade + Error */}
-          <div className="flex items-center gap-4 pointer-events-auto">
-            {whopUser && (
-              <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-500">
-                <div className={clsx(
-                  "flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-tight border shadow-sm transition-all",
-                  whopUser.isUnlimited
-                    ? "bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-purple-900/10"
-                    : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-emerald-900/10"
-                )}>
-                  <Zap size={10} className={clsx("fill-current", whopUser.isUnlimited ? "text-purple-400" : "text-emerald-400")} />
-                  <span>{whopUser.isUnlimited ? "UNLIMITED" : `${whopUser.credits ?? 0} CREDITS`}</span>
-                </div>
-
-                {!whopUser.isUnlimited && (
-                  <button
-                    onClick={handleUpgradeClick}
-                    disabled={isCheckoutLoading}
-                    className="hidden lg:block px-4 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 rounded-md text-[10px] font-bold text-white hover:opacity-90 hover:scale-105 transition-all shadow-lg shadow-purple-900/20 disabled:opacity-50"
-                  >
-                    {isCheckoutLoading ? '...' : 'UPGRADE'}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {error && <div className="px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs backdrop-blur-md">{error}</div>}
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-hidden relative">
-          <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
-
-            {/* IDLE STATE */}
-            {!marketState && !isMicActive && (
-              <div className="flex flex-col items-center justify-center h-full space-y-8 animate-in fade-in zoom-in duration-700">
-                <div className="relative w-32 h-32 md:w-48 md:h-48">
-                  <VoiceOrb state="idle" volume={0} />
-                </div>
-                <div className="text-center">
-                  <h1 className="text-5xl font-extralight text-white tracking-[0.2em] mb-2">NOVA</h1>
-                  <div className="text-xs font-mono text-emerald-500 tracking-[0.3em] uppercase opacity-80">Quantum Market Intelligence</div>
-                </div>
-                <button
-                  onClick={startMic}
-                  className="group relative px-10 py-5 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full text-slate-950 font-bold tracking-widest hover:scale-105 transition-all flex items-center gap-3 z-20"
-                >
-                  <Power size={20} /> INITIALIZE SYSTEM
-                </button>
-              </div>
-            )}
-
-            {/* ACTIVE SESSION STATE (Orb + Dynamic Labels) */}
-            {!marketState && isMicActive && (
-              <div className="flex flex-col items-center justify-center h-full space-y-8 mt-[-60px]">
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-80 h-80 relative">
-                    <VoiceOrb state={orbState} volume={volume} />
-                  </div>
-                  {orbState === 'listening' && <TypewriterHint />}
-                </div>
-                <div className="text-2xl font-light text-white tracking-[0.2em] uppercase animate-pulse">
-                  {orbState === 'speaking' ? 'Speaking...' :
-                    orbState === 'thinking' ? 'Thinking...' : 'Listening...'}
-                </div>
-              </div>
-            )}
-
-            {/* DASHBOARD */}
-            {marketState && (
-              <AnalysisDashboard
-                data={marketState}
-                onTypingComplete={handleAnalysisVisualComplete}
+      {/* WHOP CHECKOUT MODAL */}
+      {showCheckoutModal && checkoutSessionId && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" onClick={() => setShowCheckoutModal(false)} />
+          <div className="relative w-full max-w-lg bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center justify-between p-4 border-b border-white/5 bg-slate-900/50">
+              <h3 className="text-white font-medium flex items-center gap-2">
+                <Zap className="w-4 h-4 text-emerald-400" />
+                Upgrade to Nova Unlimited
+              </h3>
+              <button
+                onClick={() => setShowCheckoutModal(false)}
+                className="p-1 hover:bg-white/5 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="p-0 bg-black" style={{ minHeight: '600px', height: '80vh' }}>
+              <WhopCheckoutEmbed
+                sessionId={checkoutSessionId}
+                onComplete={() => {
+                  setShowCheckoutModal(false);
+                  window.location.reload();
+                }}
               />
-            )}
-          </div>
-        </div>
-
-        {/* DOCK */}
-        {(isMicActive || marketState) && (
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50">
-            <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-700/50 rounded-full p-2 pr-6 shadow-2xl flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-slate-950/50 border border-slate-800 overflow-hidden relative flex items-center justify-center">
-                <div className="w-full h-full scale-150 opacity-80"><VoiceOrb state={orbState} volume={volume} /></div>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Voice Link</span>
-                <span className={clsx("text-xs font-mono", isMicActive ? "text-emerald-400" : "text-red-400")}>
-                  {isMicActive ? (isMuted ? 'MUTED' : 'CONNECTED') : 'PAUSED'}
-                </span>
-              </div>
-              <div className="h-8 w-px bg-slate-700/50 mx-2" />
-
-              {/* End Call */}
-              <button
-                onClick={stopMic}
-                disabled={isSystemBusy}
-                className={clsx(
-                  "h-10 w-10 rounded-full flex items-center justify-center transition-all shadow-lg",
-                  isSystemBusy
-                    ? "bg-slate-800 text-slate-600 cursor-not-allowed"
-                    : "bg-red-500 text-white shadow-red-500/20 hover:bg-red-600 hover:scale-110"
-                )}
-                title={isSystemBusy ? "Analysis in Progress" : "End Call"}
-              >
-                <Phone size={20} className="rotate-[135deg]" />
-              </button>
-
-              {/* Mute Toggle */}
-              <button
-                onClick={toggleMute}
-                disabled={isSystemBusy}
-                className={clsx("h-10 w-10 rounded-full flex items-center justify-center transition-all",
-                  isSystemBusy
-                    ? "bg-slate-800 text-slate-600 cursor-not-allowed"
-                    : isMuted
-                      ? "bg-slate-700 text-slate-400"
-                      : "bg-emerald-500 text-slate-900 shadow-lg shadow-emerald-500/20"
-                )}
-                title={isSystemBusy ? "Analysis in Progress" : (isMuted ? "Unmute" : "Mute")}
-              >
-                {isMuted ? <MicOff size={18} /> : <Mic size={18} />}
-              </button>
-
-              {/* Device Selector Toggle */}
-              <div className="relative">
-                <button
-                  onClick={() => !isSystemBusy && setShowSettings(!showSettings)}
-                  disabled={isSystemBusy}
-                  className={clsx("p-2 rounded-full transition-colors",
-                    isSystemBusy ? "text-slate-700 cursor-not-allowed" :
-                      showSettings ? "bg-slate-800 text-emerald-400" : "text-slate-500 hover:text-slate-300"
-                  )}
-                >
-                  <Settings size={16} />
-                </button>
-
-                {/* Popup Menu */}
-                {showSettings && (
-                  <div className="absolute bottom-full right-0 mb-4 w-64 bg-slate-900/90 backdrop-blur-xl border border-slate-700/50 rounded-xl p-2 shadow-2xl flex flex-col gap-1 z-[60]">
-                    <div className="px-2 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                      Select Microphone
-                    </div>
-                    {audioDevices.map(device => (
-                      <button
-                        key={device.deviceId}
-                        onClick={async () => {
-                          const deviceId = device.deviceId;
-                          setSelectedDeviceId(deviceId);
-                          setShowSettings(false);
-
-                          if (isMicActive) {
-                            try {
-                              console.log("Hot-swapping microphone...");
-                              cleanupAudioResources();
-                              await startAudioStream(deviceId);
-                              console.log("Mic hot-swapped successfully.");
-                            } catch (e: any) {
-                              console.error("Hot-swap failed:", e);
-                              setError("Failed to switch microphone: " + e.message);
-                              stopMic(); // Hard reset if hot swap fails
-                            }
-                          }
-                        }}
-                        className={clsx(
-                          "flex items-center justify-between px-3 py-2 rounded-lg text-xs text-left transition-colors",
-                          selectedDeviceId === device.deviceId
-                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                            : "hover:bg-slate-800 text-slate-300"
-                        )}
-                      >
-                        <span className="truncate max-w-[180px]">{device.label || `Microphone ${device.deviceId.slice(0, 4)}...`}</span>
-                        {selectedDeviceId === device.deviceId && <Check size={12} />}
-                      </button>
-                    ))}
-
-                    {audioDevices.length === 0 && (
-                      <div className="px-3 py-2 text-xs text-slate-500 italic">No devices found</div>
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
-        )}
-      </div>
-    </div >
-
-    {/* WHOP CHECKOUT MODAL */ }
-  {
-    showCheckoutModal && checkoutSessionId && (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" onClick={() => setShowCheckoutModal(false)} />
-        <div className="relative w-full max-w-lg bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
-          <div className="flex items-center justify-between p-4 border-b border-white/5 bg-slate-900/50">
-            <h3 className="text-white font-medium flex items-center gap-2">
-              <Zap className="w-4 h-4 text-emerald-400" />
-              Upgrade to Nova Unlimited
-            </h3>
-            <button
-              onClick={() => setShowCheckoutModal(false)}
-              className="p-1 hover:bg-white/5 rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5 text-gray-400" />
-            </button>
-          </div>
-          <div className="p-0 bg-black" style={{ minHeight: '600px', height: '80vh' }}>
-            <WhopCheckoutEmbed
-              sessionId={checkoutSessionId}
-              onComplete={() => {
-                setShowCheckoutModal(false);
-                window.location.reload();
-              }}
-            />
-          </div>
         </div>
-      </div>
-    )
-  }
+      )}
+    </>
   );
 }
