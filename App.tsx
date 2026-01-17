@@ -706,6 +706,15 @@ export default function App() {
 
     const text = inputText.trim();
     setInputText('');
+
+    // 1. STRICTOR CREDIT CHECK (Unified)
+    // Check at the very beginning before even adding the user message to the log or speaking
+    if (!whopUser?.isUnlimited && (whopUser?.credits ?? 0) <= 0) {
+      setError("Insufficient credits. Please upgrade for unlimited access.");
+      await speak("Insufficient credits. Please upgrade your plan for unlimited access.");
+      return;
+    }
+
     addMessage('user', text);
     setIsChatThinking(true);
 
@@ -714,6 +723,7 @@ export default function App() {
     if (analyzeMatch) {
       if (isAnalysisRunningRef.current) {
         console.warn("Terminal: Analysis already in progress, skipping.");
+        setIsChatThinking(false);
         return;
       }
 
@@ -729,13 +739,31 @@ export default function App() {
         if (track) track.enabled = false;
       }
 
-      // 2. UNIFIED CINEMATIC ACKNOWLEDGEMENT
-      // Mirror the Voice Tool logic exactly
+      // 2. CREDIT DEDUCTION (Internal)
+      if (!whopUser?.isUnlimited) {
+        try {
+          const deductRes = await fetch('/api/credits/deduct', { method: 'POST' });
+          const deductData = await deductRes.json();
+          if (deductData.success || deductData.isUnlimited) {
+            setWhopUser(prev => prev ? ({ ...prev, credits: deductData.remaining === 'UNLIMITED' ? undefined : deductData.remaining }) : null);
+          } else {
+            await speak("Insufficient credits. Please upgrade your plan.");
+            addMessage('ai', "Insufficient credits. Please upgrade to continue.");
+            setIsChatThinking(false);
+            setOrbState('idle');
+            setIsSystemBusy(false);
+            return;
+          }
+        } catch (e) {
+          console.error("Credit deduction failed", e);
+        }
+      }
+
+      // 3. UNIFIED CINEMATIC ACKNOWLEDGEMENT (Only after deduction succeeds)
       addMessage('ai', `Analysis Protocol Initiated: ${symbol}`);
 
       setTimeout(async () => {
         try {
-          // SYNC: Swapping "Thinking" for the analysis start message exactly when Nova starts speaking
           await speak(
             `Acknowledged. Accessing decentralized market feeds for ${symbol}. Initiating quantum analysis protocol. Please stand by.`,
             () => setIsChatThinking(false)
@@ -745,102 +773,43 @@ export default function App() {
           setIsChatThinking(false);
         }
 
-        // 3. CREDIT CHECK & DEDUCTION
-        let canProceed = false;
-
-        if (whopUser?.isUnlimited) {
-          canProceed = true;
-        } else if ((whopUser?.credits ?? 0) > 0) {
-          try {
-            const deductRes = await fetch('/api/credits/deduct', {
-              method: 'POST',
-              headers: {
-                'x-whop-user-token': (document.cookie.match(/whop_user_token=([^;]+)/)?.[1] || '') // Note: Token handling in frontend might need refinement if not in cookie. Using a workaround or relying on browser to send cookies if same origin? 
-                // Actually, the app fetches /api/whop/me which uses headers sent by proxy OR assuming running in Whop iframe?
-                // The server endpoint /api/deduct reads the header.
-                // The Whop proxy sets the header automatically on requests.
-                // So simple fetch should work if behind Whop proxy.
-                // BUT if running locally with our proxy, we might not have the token injection unless tailored.
-              }
-            });
-
-            // For development/local without full Whop proxy injection, we might skip strict token check or mock it.
-            // However, let's assume standard fetch works if session is valid. 
-            // Actually, we don't need to manually set the header if the Proxy does it. 
-            // But for the purpose of this code, let's assume the browser request will carry necessary cookies or the proxy handles it.
-            // Wait, /api/credits/deduct logic in server.js checks req.headers['x-whop-user-token']. 
-            // If we are developing locally, we might not have this header unless we manually set it or use a dev token. 
-            // For now, let's proceed with a standard POST and allow server to handle 401.
-
-            const deductData = await deductRes.json();
-            if (deductData.success || deductData.isUnlimited) {
-              canProceed = true;
-              // Update local state
-              setWhopUser(prev => prev ? ({ ...prev, credits: deductData.remaining === 'UNLIMITED' ? undefined : deductData.remaining }) : null);
-            } else {
-              await speak("Insufficient credits. Please upgrade your plan for unlimited access.");
-              addMessage('ai', "Insufficient credits. Please upgrade to continue.");
-              setIsChatThinking(false);
-              setOrbState('idle');
-              setIsSystemBusy(false);
-              return; // STOP
-            }
-          } catch (e) {
-            console.error("Credit deduction failed", e);
-            // Fallback: Proceed if error? Or blockage? Let's block to be safe or allow one?
-            // For now, fail safe to BLOCK.
+        isAnalysisRunningRef.current = true;
+        try {
+          const result: any = await handleMarketAnalysis(symbol);
+          if (result.summary) {
+            await speak(result.summary);
+          } else {
+            await speak(`I have completed the analysis for ${symbol}. Direction is ${result.verdict}.`);
           }
-        } else {
-          await speak("You have used all your free credits. Please upgrade to Nova Unlimited.");
-          addMessage('ai', "Insufficient credits. Please upgrade to Nova Unlimited for $99/mo.");
-          setIsChatThinking(false);
-          setOrbState('idle');
-          setIsSystemBusy(false);
-          return;
-        }
-
-        if (canProceed) {
-          isAnalysisRunningRef.current = true;
-          try {
-            // 3. RUN ANALYSIS (Dashboard is triggered by handleMarketAnalysis)
-            const result: any = await handleMarketAnalysis(symbol);
-
-            // 4. VERBAL SUMMARY
-            if (result.summary) {
-              await speak(result.summary);
-            } else {
-              await speak(`I have completed the analysis for ${symbol}. Direction is ${result.verdict}.`);
-            }
-          } finally {
-            isAnalysisRunningRef.current = false;
-          }
-        }
-
-        // 4. VERBAL SUMMARY
-        if (result.summary) {
-          await speak(result.summary);
-        } else {
-          await speak(`I have completed the analysis for ${symbol}. Direction is ${result.verdict}.`);
+        } catch (e) {
+          console.error("Text analysis failed:", e);
+        } finally {
+          isAnalysisRunningRef.current = false;
         }
       }, 100);
+
     } else {
+      // General Chat Path - Also deducts 1 credit
       try {
+        if (!whopUser?.isUnlimited) {
+          await fetch('/api/credits/deduct', { method: 'POST' });
+          setWhopUser(prev => prev ? ({ ...prev, credits: Math.max(0, (prev.credits ?? 0) - 1) }) : null);
+        }
+
         console.log("Terminal: Generating text response for", text);
         setOrbState('thinking');
         const responseText = await geminiService.generateTextResponse(text);
-        console.log("Terminal: Response received", responseText);
 
         setOrbState(isMicActive ? 'listening' : 'idle');
-
-        // SYNC: Perfect Sync Protocol - Trigger log update EXACTLY when playback starts
-        console.log("Terminal: Starting perfect sync speak...");
         await speak(responseText, () => {
           addMessage('ai', responseText);
           setIsChatThinking(false);
-          console.log("Terminal: Speech started, message added to log.");
         });
 
-      } catch (e) {
+      } catch (e: any) {
+        console.error("Text response failed:", e);
+        setIsChatThinking(false);
+        setOrbState('idle');
       }
     }
   };
