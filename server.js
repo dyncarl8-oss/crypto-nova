@@ -218,7 +218,9 @@ app.post('/api/checkout/session', async (req, res) => {
         const checkoutConfig = await whopClient.checkoutConfigurations.create({
             company_id: process.env.WHOP_COMPANY_ID || '',
             plan: {
-                initial_price: 99.0, // Default to $99 as per "Nova Unlimited" 
+                companyId: process.env.WHOP_COMPANY_ID || '', // Inside plan and camelCase as per error message
+                initial_price: 99.0,
+                currency: 'usd', // Mandatory field
                 plan_type: 'renewal', // Monthly subscription
                 billing_period: 30,
             },
