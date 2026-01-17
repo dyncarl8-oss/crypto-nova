@@ -200,6 +200,44 @@ app.get('/api/analysis/history', async (req, res) => {
     }
 });
 
+// Endpoint to create a checkout session
+app.post('/api/checkout/session', async (req, res) => {
+    const userToken = req.headers['x-whop-user-token'];
+
+    if (!userToken) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        const headers = new Headers();
+        headers.set('x-whop-user-token', String(userToken));
+        const verification = await whopClient.verifyUserToken(headers);
+        const userId = verification.userId;
+
+        // Create a checkout configuration
+        const checkoutConfig = await whopClient.checkoutConfigurations.create({
+            company_id: process.env.WHOP_COMPANY_ID || '',
+            plan: {
+                initial_price: 99.0, // Default to $99 as per "Nova Unlimited" 
+                plan_type: 'renewal', // Monthly subscription
+                billing_period: 30,
+            },
+            metadata: {
+                whop_user_id: userId,
+                source: 'nova_app_upgrade_button'
+            }
+        });
+
+        res.json({ success: true, sessionId: checkoutConfig.id });
+    } catch (error) {
+        console.error('[SERVER] Checkout session error:', error);
+        res.status(500).json({
+            error: 'Failed to initialize checkout. Please check WHOP_COMPANY_ID and API Key.',
+            details: error.message
+        });
+    }
+});
+
 app.get('/api/debug/headers', (req, res) => {
     res.json({ headers: req.headers });
 });

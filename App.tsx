@@ -14,6 +14,7 @@ import { whopService } from './services/whopService';
 import { WhopUser, WhopAccess } from './types';
 import { serverLog } from './services/logger';
 import clsx from 'clsx';
+import { WhopCheckoutEmbed } from "@whop/checkout/react";
 
 export default function App() {
   // --- STATE ---
@@ -31,6 +32,9 @@ export default function App() {
   const [whopUser, setWhopUser] = useState<WhopUser | null>(null);
   const [whopAccess, setWhopAccess] = useState<WhopAccess | null>(null);
   const [isWhopLoading, setIsWhopLoading] = useState(true);
+  const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
 
   // --- SETTINGS STATE ---
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
@@ -710,7 +714,6 @@ export default function App() {
     // 1. STRICTOR CREDIT CHECK (Unified)
     // Check at the very beginning before even adding the user message to the log or speaking
     if (!whopUser?.isUnlimited && (whopUser?.credits ?? 0) <= 0) {
-      setError("Insufficient credits. Please upgrade for unlimited access.");
       await speak("Insufficient credits. Please upgrade your plan for unlimited access.");
       return;
     }
@@ -811,6 +814,30 @@ export default function App() {
         setIsChatThinking(false);
         setOrbState('idle');
       }
+    }
+  };
+
+  const handleUpgradeClick = async () => {
+    try {
+      setIsCheckoutLoading(true);
+      const res = await fetch('/api/checkout/session', {
+        method: 'POST',
+        headers: {
+          'x-whop-user-token': (document.cookie.match(/whop_user_token=([^;]+)/)?.[1] || '')
+        }
+      });
+      const data = await res.json();
+      if (data.sessionId) {
+        setCheckoutSessionId(data.sessionId);
+        setShowCheckoutModal(true);
+      } else {
+        setError("Failed to initialize upgrade flow. Please try again.");
+      }
+    } catch (e) {
+      console.error("Upgrade error:", e);
+      setError("Failed to connect to checkout.");
+    } finally {
+      setIsCheckoutLoading(false);
     }
   };
 
@@ -955,14 +982,13 @@ export default function App() {
                 </div>
 
                 {!whopUser.isUnlimited && (
-                  <a
-                    href="https://whop.com/checkout/YOUR_CHECKOUT_LINK_HERE"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hidden lg:block px-4 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 rounded-md text-[10px] font-bold text-white hover:opacity-90 hover:scale-105 transition-all shadow-lg shadow-purple-900/20"
+                  <button
+                    onClick={handleUpgradeClick}
+                    disabled={isCheckoutLoading}
+                    className="hidden lg:block px-4 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 rounded-md text-[10px] font-bold text-white hover:opacity-90 hover:scale-105 transition-all shadow-lg shadow-purple-900/20 disabled:opacity-50"
                   >
-                    UPGRADE
-                  </a>
+                    {isCheckoutLoading ? '...' : 'UPGRADE'}
+                  </button>
                 )}
               </div>
             )}
