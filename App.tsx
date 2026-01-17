@@ -582,58 +582,85 @@ export default function App() {
     }
   };
 
+
+  const cleanupAudioResources = () => {
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+      if (scriptProcessorRef.current) {
+        scriptProcessorRef.current.disconnect();
+        scriptProcessorRef.current = null;
+      }
+      if (sourceRef.current) {
+        sourceRef.current.disconnect();
+        sourceRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(console.error);
+        audioContextRef.current = null;
+      }
+    } catch (e) {
+      console.error("Audio cleanup error:", e);
+    }
+  };
+
+  const startAudioStream = async (deviceId?: string) => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: deviceId ? { exact: deviceId } : undefined,
+        sampleRate: 16000,
+        channelCount: 1
+      }
+    });
+    streamRef.current = stream;
+
+    const audioCtx = new AudioContext({ sampleRate: 16000 });
+    audioContextRef.current = audioCtx;
+
+    const source = audioCtx.createMediaStreamSource(stream);
+    const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+    processor.onaudioprocess = (e) => {
+      if (!sessionRef.current || !isSessionReadyRef.current) return;
+
+      const inputData = e.inputBuffer.getChannelData(0);
+      let sum = 0;
+      for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
+      const rms = Math.sqrt(sum / inputData.length);
+      setVolume(Math.min(1, rms * 5));
+
+      if (orbStateRef.current === 'listening' || orbStateRef.current === 'idle') {
+        try {
+          const pcmBlob = createPcmBlob(inputData, 16000);
+          sessionRef.current.sendRealtimeInput({ media: pcmBlob });
+        } catch (err) {
+          console.warn("Realtime input send failed:", err);
+        }
+      }
+    };
+
+    source.connect(processor);
+    processor.connect(audioCtx.destination);
+
+    sourceRef.current = source;
+    scriptProcessorRef.current = processor;
+  };
+
   const startMic = async () => {
     if (isMicActive) return;
     setError(null);
     setIsMuted(false);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
-          sampleRate: 16000,
-          channelCount: 1
-        }
-      });
-      streamRef.current = stream;
+      await startAudioStream(selectedDeviceId);
 
       const session = await connectLive();
       if (!session) {
         throw new Error("Core session failed to initialize. Please check your connection.");
       }
 
-      const audioCtx = new AudioContext({ sampleRate: 16000 });
-      const source = audioCtx.createMediaStreamSource(stream);
-      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-
-      processor.onaudioprocess = (e) => {
-        // CRITICAL: Only send if the session is fully open and active
-        if (!sessionRef.current || !isSessionReadyRef.current) return;
-
-        const inputData = e.inputBuffer.getChannelData(0);
-        let sum = 0;
-        for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
-        const rms = Math.sqrt(sum / inputData.length);
-        setVolume(Math.min(1, rms * 5));
-
-        // STRICT TURN-TAKING: Only send audio if Nova is NOT speaking or thinking
-        if (orbStateRef.current === 'listening' || orbStateRef.current === 'idle') {
-          try {
-            const pcmBlob = createPcmBlob(inputData, 16000);
-            sessionRef.current.sendRealtimeInput({ media: pcmBlob });
-          } catch (err) {
-            console.warn("Realtime input send failed (likely closed during process):", err);
-          }
-        }
-      };
-
-      source.connect(processor);
-      processor.connect(audioCtx.destination);
-
-      sourceRef.current = source;
-      scriptProcessorRef.current = processor;
-
-      // ONLY set active once EVERYTHING is connected
       setIsMicActive(true);
       setIsMuted(false);
 
@@ -641,25 +668,17 @@ export default function App() {
       console.error("CRITICAL CONNECTION FAILURE:", e);
       setError("System failed to initialize: " + (e.message || "Unknown error"));
       setIsMicActive(false);
-
-      // Cleanup any partial success
-      streamRef.current?.getTracks().forEach(t => t.stop());
+      cleanupAudioResources();
     }
   };
 
   const stopMic = () => {
-    try {
-      streamRef.current?.getTracks().forEach(t => t.stop());
-      scriptProcessorRef.current?.disconnect();
-      sourceRef.current?.disconnect();
+    cleanupAudioResources();
 
-      if (sessionRef.current) {
-        isSessionReadyRef.current = false;
-        sessionRef.current.close();
-        sessionRef.current = null;
-      }
-    } catch (e) {
-      console.error("Cleanup error during stopMic:", e);
+    if (sessionRef.current) {
+      isSessionReadyRef.current = false;
+      sessionRef.current.close();
+      sessionRef.current = null;
     }
 
     // FULL SESSION RESET
@@ -1099,14 +1118,22 @@ export default function App() {
                     {audioDevices.map(device => (
                       <button
                         key={device.deviceId}
-                        onClick={() => {
-                          setSelectedDeviceId(device.deviceId);
+                        onClick={async () => {
+                          const deviceId = device.deviceId;
+                          setSelectedDeviceId(deviceId);
                           setShowSettings(false);
-                          // If live, we might want to restart, but for now just update state for next time
+
                           if (isMicActive) {
-                            stopMic();
-                            // Optional: Immediately restart with new mic? 
-                            // startMic(); // Might be jarring, let user restart manually.
+                            try {
+                              console.log("Hot-swapping microphone...");
+                              cleanupAudioResources();
+                              await startAudioStream(deviceId);
+                              console.log("Mic hot-swapped successfully.");
+                            } catch (e: any) {
+                              console.error("Hot-swap failed:", e);
+                              setError("Failed to switch microphone: " + e.message);
+                              stopMic(); // Hard reset if hot swap fails
+                            }
                           }
                         }}
                         className={clsx(
