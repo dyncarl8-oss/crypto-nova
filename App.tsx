@@ -904,6 +904,7 @@ export default function App() {
       <div className={clsx("flex-1 flex flex-col relative z-10 transition-all duration-300 h-full", showLog ? "ml-[320px]" : "ml-0")}>
 
         <div className="h-16 px-6 flex items-center justify-between z-30 pointer-events-none">
+          {/* LEFT: Sidebar Toggle + Profile */}
           <div className="flex items-center gap-4 pointer-events-auto">
             <button onClick={() => setShowLog(!showLog)} className="p-1 text-slate-500 hover:text-white transition-all duration-300 hover:bg-white/5 rounded-md pointer-events-auto flex items-center justify-center">
               {showLog ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
@@ -923,19 +924,25 @@ export default function App() {
                 </div>
 
                 <div className="flex flex-col">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="text-xs font-bold text-slate-100 leading-none">{whopUser.name}</p>
-                    <div className={clsx(
-                      "flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[9px] font-black tracking-tight border shadow-sm transition-all",
-                      whopUser.isUnlimited
-                        ? "bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-purple-900/10"
-                        : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-emerald-900/10"
-                    )}>
-                      <Zap size={9} className={clsx("fill-current", whopUser.isUnlimited ? "text-purple-400" : "text-emerald-400")} />
-                      <span>{whopUser.isUnlimited ? "UNLIMITED" : whopUser.credits ?? 0}</span>
-                    </div>
-                  </div>
+                  <p className="text-xs font-bold text-slate-100 leading-none mb-1">{whopUser.name}</p>
                   <p className="text-[10px] font-mono text-slate-500/40 uppercase tracking-[0.15em] font-medium italic">Quantum Operator</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT: Credits + Upgrade + Error */}
+          <div className="flex items-center gap-4 pointer-events-auto">
+            {whopUser && (
+              <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-500">
+                <div className={clsx(
+                  "flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-tight border shadow-sm transition-all",
+                  whopUser.isUnlimited
+                    ? "bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-purple-900/10"
+                    : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-emerald-900/10"
+                )}>
+                  <Zap size={10} className={clsx("fill-current", whopUser.isUnlimited ? "text-purple-400" : "text-emerald-400")} />
+                  <span>{whopUser.isUnlimited ? "UNLIMITED" : `${whopUser.credits ?? 0} CREDITS`}</span>
                 </div>
 
                 {!whopUser.isUnlimited && (
@@ -943,15 +950,16 @@ export default function App() {
                     href="https://whop.com/checkout/YOUR_CHECKOUT_LINK_HERE"
                     target="_blank"
                     rel="noreferrer"
-                    className="hidden lg:block px-3 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 rounded-md text-[10px] font-bold text-white hover:opacity-90 hover:scale-105 transition-all shadow-lg shadow-purple-900/20"
+                    className="hidden lg:block px-4 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 rounded-md text-[10px] font-bold text-white hover:opacity-90 hover:scale-105 transition-all shadow-lg shadow-purple-900/20"
                   >
                     UPGRADE
                   </a>
                 )}
               </div>
             )}
+
+            {error && <div className="px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs backdrop-blur-md">{error}</div>}
           </div>
-          {error && <div className="px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs backdrop-blur-md pointer-events-auto">{error}</div>}
         </div>
 
         <div className="flex-1 overflow-hidden relative">
