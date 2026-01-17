@@ -923,19 +923,19 @@ export default function App() {
                 </div>
 
                 <div className="flex flex-col">
+                  <p className="text-xs font-bold text-slate-100 leading-none mb-1.5">{whopUser.name}</p>
                   <div className="flex items-center gap-3">
-                    <p className="text-xs font-bold text-slate-100 leading-none">{whopUser.name}</p>
+                    <p className="text-[10px] font-mono text-slate-500/60 uppercase tracking-[0.2em] font-semibold">Quantum Operator</p>
                     <div className={clsx(
-                      "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black tracking-tighter shadow-lg transition-all border",
+                      "flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-black tracking-tighter shadow-lg transition-all border",
                       whopUser.isUnlimited
                         ? "bg-purple-500/20 text-purple-400 border-purple-500/40 shadow-purple-500/10"
                         : "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-emerald-500/10"
                     )}>
-                      <Zap size={10} className={clsx("fill-current", whopUser.isUnlimited ? "text-purple-400" : "text-emerald-400")} />
+                      <Zap size={9} className={clsx("fill-current", whopUser.isUnlimited ? "text-purple-400" : "text-emerald-400")} />
                       <span>{whopUser.isUnlimited ? "UNLIMITED" : `${whopUser.credits ?? 0} CREDITS`}</span>
                     </div>
                   </div>
-                  <p className="text-[10px] font-mono text-slate-500/60 uppercase tracking-[0.2em] mt-1.5 font-semibold">Quantum Operator</p>
                 </div>
 
                 {!whopUser.isUnlimited && (
