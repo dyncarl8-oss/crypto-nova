@@ -51,6 +51,7 @@ export default function App() {
   const visualCompleteResolverRef = useRef<(() => void) | null>(null);
   const orbStateRef = useRef(orbState);
   const isSessionReadyRef = useRef(false);
+  const isAnalysisRunningRef = useRef(false);
 
   // Sync ref with state
   useEffect(() => {
@@ -486,6 +487,11 @@ export default function App() {
                 if (call.name === 'analyze_market') {
                   const { symbol } = call.args as any;
 
+                  if (isAnalysisRunningRef.current) {
+                    console.warn("ToolCall: Analysis already in progress, skipping duplicative call.");
+                    continue;
+                  }
+
                   // 0. CREDIT CHECK (Tool Call)
                   // Note: This duplicates logic but necessary to catch Tool calls triggered by Voice directly if possible.
                   // Since handleTextSubmit handles text, this handles voice tool calls.
@@ -528,14 +534,19 @@ export default function App() {
                   await speak(`Acknowledged. Accessing decentralized market feeds for ${symbol}. Initiating quantum analysis protocol. Please stand by.`);
 
                   // 2. RUN ANALYSIS (Waits for visual completion)
-                  const result = await handleMarketAnalysis(symbol);
+                  isAnalysisRunningRef.current = true;
+                  try {
+                    const result = await handleMarketAnalysis(symbol);
 
-                  // 3. SEND RESULT (Only after visuals are done)
-                  responses.push({
-                    id: call.id,
-                    name: call.name,
-                    response: { result }
-                  });
+                    // 3. SEND RESULT (Only after visuals are done)
+                    responses.push({
+                      id: call.id,
+                      name: call.name,
+                      response: { result }
+                    });
+                  } finally {
+                    isAnalysisRunningRef.current = false;
+                  }
                 }
               }
               if (isSessionReadyRef.current) {
@@ -682,6 +693,11 @@ export default function App() {
     const analyzeMatch = text.match(/(?:analyze|check|show|price|what\s+is)\s+(?:(?:the|price|of|a)\s+)*([a-z0-9]{2,})/i);
 
     if (analyzeMatch) {
+      if (isAnalysisRunningRef.current) {
+        console.warn("Terminal: Analysis already in progress, skipping.");
+        return;
+      }
+
       const symbol = analyzeMatch[1].toUpperCase();
       console.log("Terminal: Initiating analysis for", symbol);
 
@@ -765,14 +781,19 @@ export default function App() {
         }
 
         if (canProceed) {
-          // 3. RUN ANALYSIS (Dashboard is triggered by handleMarketAnalysis)
-          const result: any = await handleMarketAnalysis(symbol);
+          isAnalysisRunningRef.current = true;
+          try {
+            // 3. RUN ANALYSIS (Dashboard is triggered by handleMarketAnalysis)
+            const result: any = await handleMarketAnalysis(symbol);
 
-          // 4. VERBAL SUMMARY
-          if (result.summary) {
-            await speak(result.summary);
-          } else {
-            await speak(`I have completed the analysis for ${symbol}. Direction is ${result.verdict}.`);
+            // 4. VERBAL SUMMARY
+            if (result.summary) {
+              await speak(result.summary);
+            } else {
+              await speak(`I have completed the analysis for ${symbol}. Direction is ${result.verdict}.`);
+            }
+          } finally {
+            isAnalysisRunningRef.current = false;
           }
         }
 
