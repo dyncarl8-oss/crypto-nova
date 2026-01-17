@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Send, Menu, MicOff, Terminal, Wifi, X, Power, Settings, Check, PhoneOff, Phone, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Mic, Send, Menu, MicOff, Terminal, Wifi, X, Power, Settings, Check, PhoneOff, Phone, ChevronRight, ChevronLeft, Zap } from 'lucide-react';
 import VoiceOrb from './components/VoiceOrb';
 import AnalysisDashboard from './components/AnalysisDashboard';
 import TypewriterHint from './components/TypewriterHint';
@@ -25,7 +25,7 @@ export default function App() {
   const [isMicActive, setIsMicActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showLog, setShowLog] = useState(false);
+  const [showLog, setShowLog] = useState(true);
   const [isSystemBusy, setIsSystemBusy] = useState(false);
   const [isChatThinking, setIsChatThinking] = useState(false);
   const [whopUser, setWhopUser] = useState<WhopUser | null>(null);
@@ -923,16 +923,19 @@ export default function App() {
                 </div>
 
                 <div className="flex flex-col">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <p className="text-xs font-bold text-slate-100 leading-none">{whopUser.name}</p>
                     <div className={clsx(
-                      "px-2 py-0.5 rounded-[4px] text-[10px] font-bold tracking-wider",
-                      whopUser.isUnlimited ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                      "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black tracking-tighter shadow-lg transition-all border",
+                      whopUser.isUnlimited
+                        ? "bg-purple-500/20 text-purple-400 border-purple-500/40 shadow-purple-500/10"
+                        : "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-emerald-500/10"
                     )}>
-                      {whopUser.isUnlimited ? "UNLIMITED" : `${whopUser.credits ?? 0} CREDITS`}
+                      <Zap size={10} className={clsx("fill-current", whopUser.isUnlimited ? "text-purple-400" : "text-emerald-400")} />
+                      <span>{whopUser.isUnlimited ? "UNLIMITED" : `${whopUser.credits ?? 0} CREDITS`}</span>
                     </div>
                   </div>
-                  <p className="text-[10px] font-mono text-slate-500 uppercase tracking-tighter mt-1 opacity-70">Quantum Operator</p>
+                  <p className="text-[10px] font-mono text-slate-500/60 uppercase tracking-[0.2em] mt-1.5 font-semibold">Quantum Operator</p>
                 </div>
 
                 {!whopUser.isUnlimited && (
