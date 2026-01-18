@@ -1018,8 +1018,8 @@ export default function App() {
                       <Zap size={32} className="fill-current" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-white mb-2 uppercase tracking-wider">Premium Access</h3>
-                      <p className="text-[10px] text-slate-500 leading-relaxed">Persistent chat and analysis history are exclusive to Nova Unlimited members.</p>
+                      <h3 className="text-sm font-bold text-white mb-2 uppercase tracking-wider">Pro Access</h3>
+                      <p className="text-[10px] text-slate-500 leading-relaxed">Persistent chat and analysis history are exclusive to Nova Pro members.</p>
                     </div>
                     <button
                       onClick={handleUpgradeClick}
@@ -1131,7 +1131,7 @@ export default function App() {
                       : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-emerald-900/10"
                   )}>
                     <Zap size={10} className={clsx("fill-current", whopUser.isUnlimited ? "text-purple-400" : "text-emerald-400")} />
-                    <span>{whopUser.isUnlimited ? "UNLIMITED" : `${whopUser.credits ?? 0} CREDITS`}</span>
+                    <span>{whopUser.isUnlimited ? "PRO" : `${whopUser.credits ?? 0} CREDITS`}</span>
                   </div>
 
                   {!whopUser.isUnlimited && (
@@ -1316,7 +1316,7 @@ export default function App() {
             <div className="flex items-center justify-between p-4 border-b border-white/5 bg-slate-900/40 shrink-0">
               <h3 className="text-white font-medium flex items-center gap-2">
                 <Zap className="w-4 h-4 text-emerald-400" />
-                Upgrade to Nova Unlimited
+                Upgrade to Nova Pro
               </h3>
               <button
                 onClick={() => setShowCheckoutModal(false)}

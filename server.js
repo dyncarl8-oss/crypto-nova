@@ -81,9 +81,22 @@ app.get('/api/whop/me', async (req, res) => {
             }
         }
 
-        // Check for "Nova Unlimited" Plan (You might verify this via Whop entitlement or just DB override)
-        // For now, we trust the DB `isUnlimited` flag or Whop access logic
-        // TODO: If you have a specific Product ID for "Unlimited", check `whopClient.users.checkAccess` for that specific product here.
+        // Check for "Pro" Plan entitlements
+        const resourceId = process.env.WHOP_RESOURCE_ID;
+        if (resourceId) {
+            try {
+                const resourceAccess = await whopClient.users.checkAccess(resourceId, { id: userId });
+                if (resourceAccess.has_access) {
+                    if (!dbUser.isUnlimited) {
+                        console.log(`[WHOP] Upgrading user ${whopUser.username} to Pro based on active membership.`);
+                        dbUser.isUnlimited = true;
+                        await dbUser.save();
+                    }
+                }
+            } catch (e) {
+                console.log('[SERVER] Resource access check error:', e.message);
+            }
+        }
 
         res.json({
             authenticated: true,
