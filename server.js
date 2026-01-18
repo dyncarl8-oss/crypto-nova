@@ -59,7 +59,7 @@ app.get('/api/whop/me', async (req, res) => {
                 whopUserId: userId,
                 username: whopUser.username,
                 credits: 10, // Increased free credits for new users
-                isUnlimited: false
+                isPro: false
             });
         } else {
             // Update last login
@@ -87,9 +87,9 @@ app.get('/api/whop/me', async (req, res) => {
             try {
                 const resourceAccess = await whopClient.users.checkAccess(resourceId, { id: userId });
                 if (resourceAccess.has_access) {
-                    if (!dbUser.isUnlimited) {
+                    if (!dbUser.isPro) {
                         console.log(`[WHOP] Upgrading user ${whopUser.username} to Pro based on active membership.`);
-                        dbUser.isUnlimited = true;
+                        dbUser.isPro = true;
                         await dbUser.save();
                     }
                 }
@@ -106,7 +106,7 @@ app.get('/api/whop/me', async (req, res) => {
                 name: whopUser.name || whopUser.username,
                 profile_picture: whopUser.profile_picture?.url,
                 credits: dbUser.credits,
-                isUnlimited: dbUser.isUnlimited
+                isPro: dbUser.isPro
             },
             access,
             experienceId
@@ -141,17 +141,17 @@ app.post('/api/credits/deduct', async (req, res) => {
             return res.status(404).json({ error: 'User not found in database' });
         }
 
-        if (user.isUnlimited) {
-            return res.json({ success: true, remaining: 'UNLIMITED', isUnlimited: true });
+        if (user.isPro) {
+            return res.json({ success: true, remaining: 'UNLIMITED', isPro: true });
         }
 
         if (user.credits > 0) {
             user.credits -= 1;
             await user.save();
             console.log(`[DB] Deducted credit for ${user.username}. Remaining: ${user.credits}`);
-            return res.json({ success: true, remaining: user.credits, isUnlimited: false });
+            return res.json({ success: true, remaining: user.credits, isPro: false });
         } else {
-            return res.status(403).json({ error: 'Insufficient credits', remaining: 0, isUnlimited: false });
+            return res.status(403).json({ error: 'Insufficient credits', remaining: 0, isPro: false });
         }
 
     } catch (error) {
@@ -269,9 +269,9 @@ app.get('/api/chat/history', async (req, res) => {
         const verification = await whopClient.verifyUserToken(headers);
         const userId = verification.userId;
 
-        // Verify if user is Unlimited in DB
+        // Verify if user is Pro in DB
         const dbUser = await User.findOne({ whopUserId: userId });
-        if (!dbUser?.isUnlimited) {
+        if (!dbUser?.isPro) {
             return res.status(403).json({ error: 'Premium subscription required for history.' });
         }
 

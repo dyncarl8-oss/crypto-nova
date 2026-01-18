@@ -161,7 +161,7 @@ export interface WhopUser {
   name: string;
   profile_picture?: string;
   credits?: number;
-  isUnlimited?: boolean;
+  isPro?: boolean;
 }
 
 export interface WhopAccess {

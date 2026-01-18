@@ -23,7 +23,7 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 10,
     },
-    isUnlimited: {
+    isPro: {
         type: Boolean,
         default: false,
     },

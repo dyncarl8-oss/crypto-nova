@@ -105,7 +105,7 @@ export default function App() {
 
   // --- HISTORY LOGIC ---
   const fetchChatHistory = async () => {
-    if (!whopUser?.isUnlimited) return;
+    if (!whopUser?.isPro) return;
     try {
       setIsHistoryLoading(true);
       const res = await fetch('/api/chat/history', {
@@ -583,7 +583,7 @@ export default function App() {
                   // 0. CREDIT CHECK (Tool Call)
                   // Note: This duplicates logic but necessary to catch Tool calls triggered by Voice directly if possible.
                   // Since handleTextSubmit handles text, this handles voice tool calls.
-                  if (!whopUser?.isUnlimited && (whopUser?.credits ?? 0) <= 0) {
+                  if (!whopUser?.isPro && (whopUser?.credits ?? 0) <= 0) {
                     addMessage('ai', "Insufficient credits for analysis.");
                     await speak("I'm sorry, you have insufficient credits. Please upgrade your plan.");
 
@@ -601,7 +601,7 @@ export default function App() {
 
                   // If credits exist, we attempt deduction asynchronously or we trust the flow? 
                   // Ideally we deduct here too.
-                  if (!whopUser?.isUnlimited) {
+                  if (!whopUser?.isPro) {
                     await fetch('/api/credits/deduct', { method: 'POST' });
                     // Optimistic update
                     setWhopUser(prev => prev ? ({ ...prev, credits: Math.max(0, (prev.credits ?? 0) - 1) }) : null);
@@ -797,7 +797,7 @@ export default function App() {
 
     // 1. STRICTOR CREDIT CHECK (Unified)
     // Check at the very beginning before even adding the user message to the log or speaking
-    if (!whopUser?.isUnlimited && (whopUser?.credits ?? 0) <= 0) {
+    if (!whopUser?.isPro && (whopUser?.credits ?? 0) <= 0) {
       await speak("Insufficient credits. Please upgrade your plan for unlimited access.");
       return;
     }
@@ -827,11 +827,11 @@ export default function App() {
       }
 
       // 2. CREDIT DEDUCTION (Internal)
-      if (!whopUser?.isUnlimited) {
+      if (!whopUser?.isPro) {
         try {
           const deductRes = await fetch('/api/credits/deduct', { method: 'POST' });
           const deductData = await deductRes.json();
-          if (deductData.success || deductData.isUnlimited) {
+          if (deductData.success || deductData.isPro) {
             setWhopUser(prev => prev ? ({ ...prev, credits: deductData.remaining === 'UNLIMITED' ? undefined : deductData.remaining }) : null);
           } else {
             await speak("Insufficient credits. Please upgrade your plan.");
@@ -878,7 +878,7 @@ export default function App() {
     } else {
       // General Chat Path - Also deducts 1 credit
       try {
-        if (!whopUser?.isUnlimited) {
+        if (!whopUser?.isPro) {
           await fetch('/api/credits/deduct', { method: 'POST' });
           setWhopUser(prev => prev ? ({ ...prev, credits: Math.max(0, (prev.credits ?? 0) - 1) }) : null);
         }
@@ -1012,7 +1012,7 @@ export default function App() {
               </>
             ) : (
               <div className="space-y-3 h-full">
-                {!whopUser?.isUnlimited ? (
+                {!whopUser?.isPro ? (
                   <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4">
                     <div className="w-16 h-16 bg-purple-500/10 rounded-full flex items-center justify-center text-purple-400">
                       <Zap size={32} className="fill-current" />
@@ -1126,15 +1126,15 @@ export default function App() {
                 <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-500">
                   <div className={clsx(
                     "flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-tight border shadow-sm transition-all",
-                    whopUser.isUnlimited
+                    whopUser.isPro
                       ? "bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-purple-900/10"
                       : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-emerald-900/10"
                   )}>
-                    <Zap size={10} className={clsx("fill-current", whopUser.isUnlimited ? "text-purple-400" : "text-emerald-400")} />
-                    <span>{whopUser.isUnlimited ? "PRO" : `${whopUser.credits ?? 0} CREDITS`}</span>
+                    <Zap size={10} className={clsx("fill-current", whopUser.isPro ? "text-purple-400" : "text-emerald-400")} />
+                    <span>{whopUser.isPro ? "PRO" : `${whopUser.credits ?? 0} CREDITS`}</span>
                   </div>
 
-                  {!whopUser.isUnlimited && (
+                  {!whopUser.isPro && (
                     <button
                       onClick={handleUpgradeClick}
                       disabled={isCheckoutLoading}
