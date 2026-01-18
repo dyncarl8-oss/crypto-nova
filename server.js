@@ -81,21 +81,57 @@ app.get('/api/whop/me', async (req, res) => {
             }
         }
 
-        // Check for "Pro" Plan entitlements
+        // Check for "Pro" Plan entitlements (Robust Check)
         const resourceId = process.env.WHOP_RESOURCE_ID;
-        if (resourceId) {
-            try {
+        const companyId = process.env.WHOP_COMPANY_ID || '';
+
+        try {
+            let hasProAccess = false;
+
+            // 1. Check specific Pass/Resource if provided
+            if (resourceId) {
                 const resourceAccess = await whopClient.users.checkAccess(resourceId, { id: userId });
                 if (resourceAccess.has_access) {
-                    if (!dbUser.isPro) {
-                        console.log(`[WHOP] Upgrading user ${whopUser.username} to Pro based on active membership.`);
-                        dbUser.isPro = true;
-                        await dbUser.save();
-                    }
+                    hasProAccess = true;
+                    console.log(`[WHOP] Direct access confirmed for resource: ${resourceId}`);
                 }
-            } catch (e) {
-                console.log('[SERVER] Resource access check error:', e.message);
             }
+
+            // 2. Fallback: List all memberships for this company to be sure
+            if (!hasProAccess && companyId) {
+                const memberships = await whopClient.memberships.list({
+                    userId: userId,
+                    companyId: companyId
+                });
+
+                // If any membership is active or trialing for this company, grant Pro
+                const active = memberships.data?.find(m =>
+                    m.status === 'active' || m.status === 'trialing' || m.status === 'completed'
+                );
+
+                if (active) {
+                    hasProAccess = true;
+                    console.log(`[WHOP] Membership found via list: ${active.id} (Status: ${active.status})`);
+                }
+            }
+
+            // Sync with DB
+            if (hasProAccess) {
+                if (!dbUser.isPro) {
+                    console.log(`[DB] Upgrading user ${whopUser.username} to Pro.`);
+                    dbUser.isPro = true;
+                    await dbUser.save();
+                }
+            } else if (dbUser.isPro) {
+                // Optional: Downgrade if no membership found? 
+                // For safety and better UX, we'll keep it true once set, 
+                // but you can uncomment this if you want strict checking.
+                // dbUser.isPro = false;
+                // await dbUser.save();
+                console.log(`[WHOP] User ${whopUser.username} has no active Pro memberships in current check.`);
+            }
+        } catch (e) {
+            console.log('[SERVER] Membership sync error:', e.message);
         }
 
         res.json({
