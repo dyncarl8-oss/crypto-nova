@@ -1312,8 +1312,8 @@ export default function App() {
       {showCheckoutModal && checkoutSessionId && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" onClick={() => setShowCheckoutModal(false)} />
-          <div className="relative w-full max-w-lg bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
-            <div className="flex items-center justify-between p-4 border-b border-white/5 bg-slate-900/50">
+          <div className="relative w-full max-w-xl max-h-[90vh] bg-[#0a0a0b] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center justify-between p-4 border-b border-white/5 bg-slate-900/40 shrink-0">
               <h3 className="text-white font-medium flex items-center gap-2">
                 <Zap className="w-4 h-4 text-emerald-400" />
                 Upgrade to Nova Unlimited
@@ -1325,7 +1325,7 @@ export default function App() {
                 <X className="w-5 h-5 text-gray-400" />
               </button>
             </div>
-            <div className="p-0 bg-black" style={{ minHeight: '600px', height: '80vh' }}>
+            <div className="flex-1 overflow-y-auto bg-black custom-scrollbar" style={{ minHeight: '500px' }}>
               <WhopCheckoutEmbed
                 sessionId={checkoutSessionId}
                 onComplete={() => {
