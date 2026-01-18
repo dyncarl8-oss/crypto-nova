@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Send, Menu, MicOff, Terminal, Wifi, X, Power, Settings, Check, PhoneOff, Phone, ChevronRight, ChevronLeft, Zap } from 'lucide-react';
+import { Mic, Send, Menu, MicOff, Terminal, Wifi, X, Power, Settings, Check, PhoneOff, Phone, ChevronRight, ChevronLeft, Zap, History, MessageSquare, Loader2 } from 'lucide-react';
 import VoiceOrb from './components/VoiceOrb';
 import AnalysisDashboard from './components/AnalysisDashboard';
 import TypewriterHint from './components/TypewriterHint';
@@ -35,6 +35,10 @@ export default function App() {
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
+  const [historyTab, setHistoryTab] = useState<'chat' | 'history'>('chat');
+  const [chatHistory, setChatHistory] = useState<any[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
 
   // --- SETTINGS STATE ---
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
@@ -65,7 +69,13 @@ export default function App() {
   // --- HELPERS ---
   const addMessage = (role: 'user' | 'ai', text: string) => {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    setMessages(prev => [...prev, { id, role, text, timestamp: Date.now() }]);
+    const newMessage = { id, role, text, timestamp: Date.now() };
+    setMessages(prev => [...prev, newMessage]);
+
+    // Auto-save message to DB if user is initialized
+    if (whopUser) {
+      saveChatMessage({ role, content: text });
+    }
   };
 
   const scrollToBottom = () => {
@@ -92,6 +102,80 @@ export default function App() {
       }
     }
   }, [marketState?.stage, orbState, isSystemBusy, isMicActive]);
+
+  // --- HISTORY LOGIC ---
+  const fetchChatHistory = async () => {
+    if (!whopUser?.isUnlimited) return;
+    try {
+      setIsHistoryLoading(true);
+      const res = await fetch('/api/chat/history', {
+        headers: {
+          'x-whop-user-token': (document.cookie.match(/whop_user_token=([^;]+)/)?.[1] || '')
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setChatHistory(data.history);
+      }
+    } catch (e) {
+      console.error("Failed to fetch history:", e);
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  };
+
+  const saveChatMessage = async (message: { role: string, content: string }) => {
+    try {
+      const res = await fetch('/api/chat/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-whop-user-token': (document.cookie.match(/whop_user_token=([^;]+)/)?.[1] || '')
+        },
+        body: JSON.stringify({
+          message,
+          conversationId: currentConversationId
+        })
+      });
+      const data = await res.json();
+      if (data.success && !currentConversationId) {
+        setCurrentConversationId(data.conversationId);
+      }
+    } catch (e) {
+      console.error("Failed to save chat:", e);
+    }
+  };
+
+  const loadConversation = async (conv: any) => {
+    try {
+      setIsHistoryLoading(true);
+      // We could fetch specific messages if the history list only returns metadata
+      // For now, let's assume the 'conv' object from history has the messages
+      // (My backend returns the full object in /api/chat/history)
+
+      const formattedMessages = conv.messages.map((m: any) => ({
+        id: m._id || `${Date.now()}-${Math.random()}`,
+        role: m.role,
+        text: m.content,
+        timestamp: new Date(m.timestamp).getTime()
+      }));
+
+      setMessages(formattedMessages);
+      setCurrentConversationId(conv._id);
+      setHistoryTab('chat');
+    } catch (e) {
+      console.error("Failed to load conversation:", e);
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  };
+
+  // Fetch history when tab changes to history
+  useEffect(() => {
+    if (historyTab === 'history') {
+      fetchChatHistory();
+    }
+  }, [historyTab]);
 
   // --- DEVICE ENUMERATION ---
   useEffect(() => {
@@ -872,34 +956,102 @@ export default function App() {
           "fixed inset-y-0 left-0 z-40 w-[320px] bg-slate-950/90 backdrop-blur-xl border-r border-slate-800 transition-transform duration-300 flex flex-col shadow-2xl",
           showLog ? "translate-x-0" : "-translate-x-full"
         )}>
-          <div className="h-16 flex items-center px-4 border-b border-slate-800/50 bg-slate-900/40">
-            <div className="flex items-center gap-3">
-              <Terminal className="text-emerald-500" size={18} />
-              <span className="text-sm font-mono tracking-wider text-slate-300">SYSTEM LOG</span>
-            </div>
+          <div className="h-16 flex items-center border-b border-slate-800/50 bg-slate-900/40">
+            <button
+              onClick={() => setHistoryTab('chat')}
+              className={clsx(
+                "flex-1 h-full flex items-center justify-center gap-2 transition-all",
+                historyTab === 'chat' ? "bg-emerald-500/10 text-emerald-500 border-b-2 border-emerald-500" : "text-slate-500 hover:text-slate-300"
+              )}
+            >
+              <Terminal size={16} />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Live Log</span>
+            </button>
+            <button
+              onClick={() => setHistoryTab('history')}
+              className={clsx(
+                "flex-1 h-full flex items-center justify-center gap-2 transition-all",
+                historyTab === 'history' ? "bg-purple-500/10 text-purple-400 border-b-2 border-purple-400" : "text-slate-500 hover:text-slate-300"
+              )}
+            >
+              <History size={16} />
+              <span className="text-[10px] font-bold uppercase tracking-widest">History</span>
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs custom-scrollbar">
-            {messages.map(m => (
-              <div key={m.id} className={clsx("flex flex-col gap-1", m.role === 'user' ? "items-end" : "items-start")}>
-                <span className={clsx("px-2 py-0.5 rounded text-[10px] uppercase font-bold",
-                  m.role === 'user' ? "bg-slate-800 text-slate-400" : "bg-emerald-950 text-emerald-500")}>
-                  {m.role === 'user' ? 'USER' : 'NOVA'}
-                </span>
-                <div className={clsx("p-2 rounded-lg max-w-[95%] break-words border",
-                  m.role === 'user' ? "bg-slate-900/50 border-slate-800" : "bg-emerald-900/10 border-emerald-900/30")}>
-                  {m.text}
-                </div>
-              </div>
-            ))}
-
-            {isChatThinking && (
-              <div className="flex flex-col items-start gap-1">
-                <span className="bg-emerald-950 text-emerald-500 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
-                  NOVA
-                </span>
-                <div className="p-2 rounded-lg bg-emerald-900/10 border border-emerald-900/30 text-emerald-500/70 text-[10px] font-mono italic">
-                  Nova is thinking
-                </div>
+            {historyTab === 'chat' ? (
+              <>
+                {messages.length === 0 && (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-2 opacity-50">
+                    <MessageSquare size={24} />
+                    <p>No active logs...</p>
+                  </div>
+                )}
+                {messages.map(m => (
+                  <div key={m.id} className={clsx("flex flex-col gap-1", m.role === 'user' ? "items-end" : "items-start")}>
+                    <span className={clsx("px-2 py-0.5 rounded text-[10px] uppercase font-bold",
+                      m.role === 'user' ? "bg-slate-800 text-slate-400" : "bg-emerald-950 text-emerald-500")}>
+                      {m.role === 'user' ? 'USER' : 'NOVA'}
+                    </span>
+                    <div className={clsx("p-2 rounded-lg max-w-[95%] break-words border",
+                      m.role === 'user' ? "bg-slate-900/50 border-slate-800" : "bg-emerald-900/10 border-emerald-900/30")}>
+                      {m.text}
+                    </div>
+                  </div>
+                ))}
+                {isChatThinking && (
+                  <div className="flex flex-col items-start gap-1">
+                    <span className="bg-emerald-950 text-emerald-500 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
+                      NOVA
+                    </span>
+                    <div className="p-2 rounded-lg bg-emerald-900/10 border border-emerald-900/30 text-emerald-500/70 text-[10px] font-mono italic">
+                      Nova is thinking
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="space-y-3 h-full">
+                {!whopUser?.isUnlimited ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4">
+                    <div className="w-16 h-16 bg-purple-500/10 rounded-full flex items-center justify-center text-purple-400">
+                      <Zap size={32} className="fill-current" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white mb-2 uppercase tracking-wider">Premium Access</h3>
+                      <p className="text-[10px] text-slate-500 leading-relaxed">Persistent chat and analysis history are exclusive to Nova Unlimited members.</p>
+                    </div>
+                    <button
+                      onClick={handleUpgradeClick}
+                      className="w-full py-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg text-[10px] font-bold text-white shadow-lg"
+                    >
+                      UPGRADE TO UNLOCK
+                    </button>
+                  </div>
+                ) : isHistoryLoading ? (
+                  <div className="h-full flex items-center justify-center">
+                    <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
+                  </div>
+                ) : chatHistory.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-2 opacity-50">
+                    <History size={24} />
+                    <p>No history found...</p>
+                  </div>
+                ) : (
+                  chatHistory.map((chat, idx) => (
+                    <div
+                      key={chat._id}
+                      onClick={() => loadConversation(chat)}
+                      className="p-3 rounded-lg bg-slate-900/40 border border-slate-800 hover:border-purple-500/50 cursor-pointer transition-all group"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Session {chatHistory.length - idx}</span>
+                        <span className="text-[9px] text-slate-600">{new Date(chat.lastMessageAt).toLocaleDateString()}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 line-clamp-1 group-hover:text-purple-300 transition-colors">{chat.title}</p>
+                    </div>
+                  ))
+                )}
               </div>
             )}
             <div ref={messagesEndRef} />

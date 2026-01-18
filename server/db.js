@@ -70,3 +70,26 @@ const analysisSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 export const Analysis = mongoose.models.Analysis || mongoose.model('Analysis', analysisSchema);
+
+// Conversation Schema
+const conversationSchema = new mongoose.Schema({
+    whopUserId: {
+        type: String,
+        required: true,
+        index: true,
+    },
+    title: String,
+    messages: [
+        {
+            role: { type: String, enum: ['user', 'ai', 'system'] },
+            content: String,
+            timestamp: { type: Date, default: Date.now }
+        }
+    ],
+    lastMessageAt: {
+        type: Date,
+        default: Date.now
+    }
+}, { timestamps: true });
+
+export const Conversation = mongoose.models.Conversation || mongoose.model('Conversation', conversationSchema);

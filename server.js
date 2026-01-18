@@ -2,7 +2,7 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import Whop from '@whop/sdk';
-import { connectDB, User, Analysis } from './server/db.js';
+import { connectDB, User, Analysis, Conversation } from './server/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -200,6 +200,76 @@ app.get('/api/analysis/history', async (req, res) => {
     }
 });
 
+// Endpoint to save chat messages
+app.post('/api/chat/save', async (req, res) => {
+    const userToken = req.headers['x-whop-user-token'];
+    const { message, conversationId } = req.body; // message: { role, content }
+
+    if (!userToken) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        const headers = new Headers();
+        headers.set('x-whop-user-token', String(userToken));
+        const verification = await whopClient.verifyUserToken(headers);
+        const userId = verification.userId;
+
+        let conversation;
+        if (conversationId) {
+            conversation = await Conversation.findOne({ _id: conversationId, whopUserId: userId });
+        }
+
+        if (!conversation) {
+            // Create new conversation
+            conversation = await Conversation.create({
+                whopUserId: userId,
+                title: message.content.slice(0, 50) + (message.content.length > 50 ? '...' : ''),
+                messages: [message],
+                lastMessageAt: new Date()
+            });
+        } else {
+            // Append to existing
+            conversation.messages.push(message);
+            conversation.lastMessageAt = new Date();
+            await conversation.save();
+        }
+
+        res.json({ success: true, conversationId: conversation._id });
+    } catch (error) {
+        console.error('[SERVER] Chat save error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Endpoint to fetch chat history
+app.get('/api/chat/history', async (req, res) => {
+    const userToken = req.headers['x-whop-user-token'];
+
+    if (!userToken) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        const headers = new Headers();
+        headers.set('x-whop-user-token', String(userToken));
+        const verification = await whopClient.verifyUserToken(headers);
+        const userId = verification.userId;
+
+        // Verify if user is Unlimited in DB
+        const dbUser = await User.findOne({ whopUserId: userId });
+        if (!dbUser?.isUnlimited) {
+            return res.status(403).json({ error: 'Premium subscription required for history.' });
+        }
+
+        const history = await Conversation.find({ whopUserId: userId }).sort({ lastMessageAt: -1 }).limit(20);
+        res.json({ success: true, history });
+    } catch (error) {
+        console.error('[SERVER] Chat history fetch error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Endpoint to create a checkout session
 app.post('/api/checkout/session', async (req, res) => {
     const userToken = req.headers['x-whop-user-token'];
@@ -214,15 +284,9 @@ app.post('/api/checkout/session', async (req, res) => {
         const verification = await whopClient.verifyUserToken(headers);
         const userId = verification.userId;
 
-        // Create a checkout configuration
+        // Create a checkout configuration using a pre-defined Plan ID
         const checkoutConfig = await whopClient.checkoutConfigurations.create({
-            plan: {
-                companyId: process.env.WHOP_COMPANY_ID || '', // Inside plan and camelCase as per error message
-                initial_price: 99.0,
-                currency: 'usd', // Mandatory field
-                plan_type: 'renewal', // Monthly subscription
-                billing_period: 30,
-            },
+            plan_id: process.env.WHOP_PLAN_ID || '',
             metadata: {
                 whop_user_id: userId,
                 source: 'nova_app_upgrade_button'
