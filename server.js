@@ -284,9 +284,17 @@ app.post('/api/checkout/session', async (req, res) => {
         const verification = await whopClient.verifyUserToken(headers);
         const userId = verification.userId;
 
+        const planId = process.env.WHOP_PLAN_ID;
+        if (!planId) {
+            return res.status(400).json({
+                error: 'Configuration Error: WHOP_PLAN_ID is missing in environment variables. Please add it to Render.'
+            });
+        }
+
         // Create a checkout configuration using a pre-defined Plan ID
         const checkoutConfig = await whopClient.checkoutConfigurations.create({
-            plan_id: process.env.WHOP_PLAN_ID || '',
+            plan_id: planId,
+            company_id: process.env.WHOP_COMPANY_ID || '',
             metadata: {
                 whop_user_id: userId,
                 source: 'nova_app_upgrade_button'
@@ -297,7 +305,7 @@ app.post('/api/checkout/session', async (req, res) => {
     } catch (error) {
         console.error('[SERVER] Checkout session error:', error);
         res.status(500).json({
-            error: 'Failed to initialize checkout. Please check WHOP_COMPANY_ID and API Key.',
+            error: 'Failed to initialize checkout. Please ensure WHOP_PLAN_ID and WHOP_COMPANY_ID are correct.',
             details: error.message
         });
     }
