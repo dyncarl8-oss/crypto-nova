@@ -81,68 +81,56 @@ app.get('/api/whop/me', async (req, res) => {
             }
         }
 
-        // Check for "Pro" Plan entitlements (Robust Check)
+        // Check for "Pro" Plan entitlements (Robust & Authorized Check)
         const resourceId = process.env.WHOP_RESOURCE_ID;
-        const companyId = process.env.WHOP_COMPANY_ID || '';
 
         console.log(`[SYNC] Checking Pro status for User: ${userId} (${whopUser.username})`);
-        console.log(`[SYNC] Resource ID: ${resourceId}, Company ID: ${companyId}`);
 
         try {
             let hasProAccess = false;
 
-            // 1. Check specific Pass/Resource if provided
+            // 1. Primary Check: Standard checkAccess for the specific Resource (Pass/Product)
             if (resourceId) {
                 try {
                     const resourceAccess = await whopClient.users.checkAccess(resourceId, { id: userId });
                     console.log(`[SYNC] Resource Check (${resourceId}):`, JSON.stringify(resourceAccess));
                     if (resourceAccess?.has_access) {
                         hasProAccess = true;
-                        console.log(`[WHOP] Direct access confirmed for resource: ${resourceId}`);
+                        console.log(`[WHOP] Access confirmed via checkAccess for: ${resourceId}`);
                     }
                 } catch (resErr) {
                     console.error(`[SYNC] Resource Check Error:`, resErr.message);
                 }
             }
 
-            // 2. Fallback: List all memberships for this company to be sure
-            if (!hasProAccess && companyId) {
-                try {
-                    console.log(`[SYNC] Attempting membership list for company: ${companyId}`);
-                    // List memberships with multiple potential parameter styles for robustness
-                    const memberships = await whopClient.memberships.list({
-                        userId: userId,
-                        user_id: userId,
-                        companyId: companyId,
-                        company_id: companyId,
-                        valid: true,
-                        status: 'active'
-                    });
+            // 2. Fallback Check: Direct inspection of user profile memberships
+            // This is safer as it uses the data already retrieved in the 'me' flow
+            if (!hasProAccess && whopUser.memberships) {
+                console.log(`[SYNC] Inspecting profile memberships for ${whopUser.username}`);
+                const membershipArray = Array.isArray(whopUser.memberships) ? whopUser.memberships : [];
 
-                    console.log(`[SYNC] Membership List Response Type:`, typeof memberships);
-                    const membershipArray = Array.isArray(memberships) ? memberships : (memberships?.data || []);
-                    console.log(`[SYNC] Found ${membershipArray.length} active/valid memberships.`);
+                const activePro = membershipArray.find(m =>
+                    (m.status === 'active' || m.status === 'trialing' || m.status === 'completed') &&
+                    (m.resource_id === resourceId || m.access_pass?.id === resourceId)
+                );
 
-                    if (membershipArray.length > 0) {
-                        hasProAccess = true;
-                        console.log(`[WHOP] Active membership confirmed via list:`, membershipArray[0].id);
-                    }
-                } catch (listErr) {
-                    console.error(`[SYNC] Membership List Error:`, listErr.message);
+                if (activePro) {
+                    hasProAccess = true;
+                    console.log(`[WHOP] Access confirmed via Profile Memberships: ${activePro.id}`);
                 }
             }
 
-            // Sync with DB
+            // Sync with Database
             if (hasProAccess) {
                 if (!dbUser.isPro) {
-                    console.log(`[DB] Upgrading user ${whopUser.username} to Pro in database.`);
+                    console.log(`[DB] SUCCESS: Upgrading user ${whopUser.username} to Pro.`);
                     dbUser.isPro = true;
                     await dbUser.save();
                 } else {
-                    console.log(`[DB] User ${whopUser.username} already verified as Pro in database.`);
+                    console.log(`[DB] User ${whopUser.username} verified as Pro.`);
                 }
             } else {
-                console.log(`[SYNC] No active Pro status found for user ${whopUser.username}. DB currently: ${dbUser.isPro}`);
+                console.log(`[SYNC] No active Pro status detected for ${whopUser.username}. DB currently: ${dbUser.isPro}`);
             }
         } catch (e) {
             console.error('[SERVER] Membership sync critical error:', e);
