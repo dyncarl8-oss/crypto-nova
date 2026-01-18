@@ -294,7 +294,6 @@ app.post('/api/checkout/session', async (req, res) => {
         // Create a checkout configuration using a pre-defined Plan ID
         const checkoutConfig = await whopClient.checkoutConfigurations.create({
             plan_id: planId,
-            company_id: process.env.WHOP_COMPANY_ID || '',
             metadata: {
                 whop_user_id: userId,
                 source: 'nova_app_upgrade_button'
