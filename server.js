@@ -68,35 +68,72 @@ app.get('/api/whop/me', async (req, res) => {
             await dbUser.save();
         }
 
-        // Get experience ID from multiple sources
-        const referer = req.headers['referer'] || '';
-        const expHeader = req.headers['x-whop-experience-id'] || '';
-        const expMatch = String(referer).match(/experiences\/(exp_[A-Za-z0-9]+)/);
-        const experienceId = expMatch ? expMatch[1] : (expHeader || process.env.WHOP_EXPERIENCE_ID || null);
+        // --- PRO SYNC: Check for specific paid plan membership ---
+        const planId = process.env.WHOP_PLAN_ID;
+        const companyId = process.env.WHOP_COMPANY_ID;
 
         console.log(`[SYNC] --- START --- User: ${whopUser.username} (${userId})`);
-        console.log(`[SYNC] ExperienceID: ${experienceId || 'NOT FOUND'}`);
+        console.log(`[SYNC] Config: PlanID=${planId || 'MISSING'}, CompanyID=${companyId || 'MISSING'}`);
 
-        let access = { has_access: false, access_level: 'no_access' };
         let hasProAccess = false;
 
-        // Check access using experienceId (this is the correct way for Experience View apps)
-        if (experienceId) {
+        // Method 1: Use SDK memberships.list() to check for active membership on specific plan
+        if (planId) {
             try {
-                console.log(`[SYNC] Checking access to experience: ${experienceId}`);
-                access = await whopClient.users.checkAccess(experienceId, { id: userId });
-                console.log(`[SYNC] Access result: has_access=${access.has_access}, level=${access.access_level}`);
+                console.log(`[SYNC] Checking memberships for plan: ${planId}`);
+                const membershipIterator = whopClient.memberships.list({
+                    user_ids: [userId],
+                    plan_ids: [planId],
+                    statuses: ['active', 'trialing', 'completed'],
+                    first: 1
+                });
 
-                // If user has 'customer' or 'admin' access level, they have an active subscription
-                if (access.has_access && (access.access_level === 'customer' || access.access_level === 'admin')) {
+                // Check if there's at least one active membership
+                for await (const membership of membershipIterator) {
+                    console.log(`[SYNC] Found active membership: ID=${membership.id}, Status=${membership.status}, Plan=${membership.plan?.id}`);
                     hasProAccess = true;
-                    console.log(`[SYNC] SUCCESS: User has ${access.access_level}-level access (Pro)`);
+                    break; // One is enough
                 }
-            } catch (accessError) {
-                console.log(`[SYNC] Access check error: ${accessError.message}`);
+
+                if (!hasProAccess) {
+                    console.log(`[SYNC] No active Pro membership found for this plan.`);
+                }
+            } catch (membershipError) {
+                console.log(`[SYNC] Membership check error: ${membershipError.message}`);
+
+                // Fallback: If SDK method fails, try raw API call with company key
+                if (companyId && process.env.WHOP_API_KEY) {
+                    try {
+                        console.log(`[SYNC] Fallback: Trying raw API...`);
+                        const mUrl = new URL('https://api.whop.com/api/v1/memberships');
+                        mUrl.searchParams.append('user_ids[]', userId);
+                        mUrl.searchParams.append('plan_ids[]', planId);
+                        mUrl.searchParams.append('statuses[]', 'active');
+                        mUrl.searchParams.append('statuses[]', 'trialing');
+                        mUrl.searchParams.append('statuses[]', 'completed');
+                        mUrl.searchParams.append('company_id', companyId);
+
+                        const mRes = await fetch(mUrl, {
+                            headers: { 'Authorization': `Bearer ${process.env.WHOP_API_KEY}`, 'Accept': 'application/json' }
+                        });
+
+                        if (mRes.ok) {
+                            const mData = await mRes.json();
+                            const memberships = mData.data || [];
+                            if (memberships.length > 0) {
+                                console.log(`[SYNC] Fallback found ${memberships.length} active membership(s)`);
+                                hasProAccess = true;
+                            }
+                        } else {
+                            console.log(`[SYNC] Fallback API error: ${mRes.status}`);
+                        }
+                    } catch (fallbackError) {
+                        console.log(`[SYNC] Fallback error: ${fallbackError.message}`);
+                    }
+                }
             }
         } else {
-            console.log(`[SYNC] WARNING: No experienceId found. Add WHOP_EXPERIENCE_ID to your environment variables.`);
+            console.log(`[SYNC] WARNING: WHOP_PLAN_ID not set. Cannot determine Pro status.`);
         }
 
         // FINAL SYNC TO DATABASE
@@ -110,7 +147,14 @@ app.get('/api/whop/me', async (req, res) => {
                     console.log(`[DB] User ${whopUser.username} verified as Pro.`);
                 }
             } else {
-                console.log(`[SYNC] No Pro access detected for ${whopUser.username}.`);
+                // If user was Pro before but no longer has access, downgrade them
+                if (dbUser.isPro) {
+                    console.log(`[DB] User ${whopUser.username} no longer has Pro access, downgrading.`);
+                    dbUser.isPro = false;
+                    await dbUser.save();
+                } else {
+                    console.log(`[SYNC] User ${whopUser.username} is not Pro.`);
+                }
             }
         } catch (err) {
             console.error(`[SYNC] CRITICAL ERROR:`, err);
