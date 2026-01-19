@@ -17,7 +17,8 @@ app.use(express.json());
 // Initialize Whop SDK with API key and App ID
 const whopClient = new Whop({
     apiKey: process.env.WHOP_API_KEY || '',
-    appID: process.env.WHOP_APP_ID || ''
+    appID: process.env.WHOP_APP_ID || '',
+    webhookKey: process.env.WHOP_WEBHOOK_SECRET ? Buffer.from(process.env.WHOP_WEBHOOK_SECRET).toString('base64') : undefined
 });
 
 // Connect to Database
@@ -402,6 +403,115 @@ app.post('/api/checkout/session', async (req, res) => {
 
 app.get('/api/debug/headers', (req, res) => {
     res.json({ headers: req.headers });
+});
+
+// Webhook endpoint for Whop membership events
+// Note: This needs raw body for signature verification, so we use a separate route with express.raw()
+app.post('/api/webhooks/whop', express.raw({ type: 'application/json' }), async (req, res) => {
+    console.log('[WEBHOOK] Received webhook request');
+
+    try {
+        // Get raw body as text for signature verification
+        const rawBody = req.body.toString('utf8');
+        const webhookHeaders = {
+            'webhook-signature': req.headers['webhook-signature'],
+            'webhook-timestamp': req.headers['webhook-timestamp'],
+            'webhook-id': req.headers['webhook-id']
+        };
+
+        console.log('[WEBHOOK] Headers:', JSON.stringify(webhookHeaders));
+
+        // Parse the webhook payload
+        let webhookData;
+        try {
+            // If WHOP_WEBHOOK_SECRET is set, validate signature using SDK
+            const webhookSecret = process.env.WHOP_WEBHOOK_SECRET;
+            if (webhookSecret && whopClient.webhooks) {
+                webhookData = whopClient.webhooks.unwrap(rawBody, { headers: req.headers });
+            } else {
+                // Fallback: parse directly (for testing without signature validation)
+                webhookData = JSON.parse(rawBody);
+                console.log('[WEBHOOK] WARNING: Webhook secret not configured, skipping signature validation');
+            }
+        } catch (parseError) {
+            console.error('[WEBHOOK] Failed to parse/validate webhook:', parseError.message);
+            return res.status(400).json({ error: 'Invalid webhook payload' });
+        }
+
+        console.log('[WEBHOOK] Event type:', webhookData.type);
+        console.log('[WEBHOOK] Event data:', JSON.stringify(webhookData.data, null, 2));
+
+        // Handle membership.activated event
+        if (webhookData.type === 'membership.activated') {
+            const membership = webhookData.data;
+            const userId = membership.user?.id;
+            const planId = membership.plan?.id;
+            const targetPlanId = process.env.WHOP_PLAN_ID;
+
+            console.log(`[WEBHOOK] membership.activated - User: ${userId}, Plan: ${planId}, Target: ${targetPlanId}`);
+
+            if (userId) {
+                // Check if this is for our target plan (or accept all if no target set)
+                if (!targetPlanId || planId === targetPlanId) {
+                    const user = await User.findOne({ whopUserId: userId });
+
+                    if (user) {
+                        if (!user.isPro) {
+                            user.isPro = true;
+                            await user.save();
+                            console.log(`[WEBHOOK] SUCCESS: Upgraded user ${user.username} to Pro`);
+                        } else {
+                            console.log(`[WEBHOOK] User ${user.username} is already Pro`);
+                        }
+                    } else {
+                        // User doesn't exist in DB yet, create them as Pro
+                        console.log(`[WEBHOOK] User ${userId} not found in DB, creating as Pro`);
+                        await User.create({
+                            whopUserId: userId,
+                            username: membership.user?.username || 'unknown',
+                            credits: 10,
+                            isPro: true
+                        });
+                        console.log(`[WEBHOOK] SUCCESS: Created new Pro user ${userId}`);
+                    }
+                } else {
+                    console.log(`[WEBHOOK] Ignoring membership for different plan: ${planId}`);
+                }
+            }
+        }
+
+        // Handle membership.deactivated event
+        if (webhookData.type === 'membership.deactivated') {
+            const membership = webhookData.data;
+            const userId = membership.user?.id;
+
+            console.log(`[WEBHOOK] membership.deactivated - User: ${userId}`);
+
+            if (userId) {
+                const user = await User.findOne({ whopUserId: userId });
+
+                if (user && user.isPro) {
+                    user.isPro = false;
+                    await user.save();
+                    console.log(`[WEBHOOK] User ${user.username} downgraded from Pro`);
+                }
+            }
+        }
+
+        // Handle payment.succeeded event (backup for immediate feedback)
+        if (webhookData.type === 'payment.succeeded') {
+            console.log(`[WEBHOOK] payment.succeeded received`);
+            // The membership.activated event will handle the actual upgrade
+        }
+
+        // Always return 200 quickly to prevent Whop from retrying
+        res.status(200).json({ received: true });
+
+    } catch (error) {
+        console.error('[WEBHOOK] Error processing webhook:', error);
+        // Still return 200 to prevent retries for handling errors
+        res.status(200).json({ received: true, error: 'Processing error' });
+    }
 });
 
 app.get('/{*path}', (req, res) => {
