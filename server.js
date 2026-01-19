@@ -68,50 +68,39 @@ app.get('/api/whop/me', async (req, res) => {
             await dbUser.save();
         }
 
-        // Get experience ID and check access
-        const referer = req.headers['referer'] || req.headers['x-whop-experience-id'] || '';
+        // Get experience ID from multiple sources
+        const referer = req.headers['referer'] || '';
+        const expHeader = req.headers['x-whop-experience-id'] || '';
         const expMatch = String(referer).match(/experiences\/(exp_[A-Za-z0-9]+)/);
-        const experienceId = expMatch ? expMatch[1] : null;
-
-        let access = { has_access: true, access_level: 'customer' };
-        if (experienceId) {
-            try {
-                access = await whopClient.users.checkAccess(experienceId, { id: userId });
-            } catch (e) {
-                console.log('[SERVER] Access check error:', e.message);
-            }
-        }
-
-        // --- PRO SYNC using SDK checkAccess (no special permissions required) ---
-        const companyId = process.env.WHOP_COMPANY_ID;
+        const experienceId = expMatch ? expMatch[1] : (expHeader || process.env.WHOP_EXPERIENCE_ID || null);
 
         console.log(`[SYNC] --- START --- User: ${whopUser.username} (${userId})`);
-        console.log(`[SYNC] Config: CompanyID=${companyId || 'MISSING'}`);
+        console.log(`[SYNC] ExperienceID: ${experienceId || 'NOT FOUND'}`);
 
-        try {
-            let hasProAccess = false;
+        let access = { has_access: false, access_level: 'no_access' };
+        let hasProAccess = false;
 
-            if (companyId) {
-                // Use SDK's checkAccess with company ID - this checks if user has paid access
-                console.log(`[SYNC] Checking access to company: ${companyId}`);
-                try {
-                    const accessResult = await whopClient.users.checkAccess(companyId, { id: userId });
-                    console.log(`[SYNC] Access result: has_access=${accessResult.has_access}, level=${accessResult.access_level}`);
+        // Check access using experienceId (this is the correct way for Experience View apps)
+        if (experienceId) {
+            try {
+                console.log(`[SYNC] Checking access to experience: ${experienceId}`);
+                access = await whopClient.users.checkAccess(experienceId, { id: userId });
+                console.log(`[SYNC] Access result: has_access=${access.has_access}, level=${access.access_level}`);
 
-                    // If user has 'customer' access level, they have an active subscription
-                    if (accessResult.has_access && accessResult.access_level === 'customer') {
-                        hasProAccess = true;
-                        console.log(`[SYNC] SUCCESS: User has customer-level access (Pro)`);
-                    } else if (accessResult.access_level === 'admin') {
-                        hasProAccess = true;
-                        console.log(`[SYNC] SUCCESS: User has admin-level access (Pro)`);
-                    }
-                } catch (accessError) {
-                    console.log(`[SYNC] Access check error: ${accessError.message}`);
+                // If user has 'customer' or 'admin' access level, they have an active subscription
+                if (access.has_access && (access.access_level === 'customer' || access.access_level === 'admin')) {
+                    hasProAccess = true;
+                    console.log(`[SYNC] SUCCESS: User has ${access.access_level}-level access (Pro)`);
                 }
+            } catch (accessError) {
+                console.log(`[SYNC] Access check error: ${accessError.message}`);
             }
+        } else {
+            console.log(`[SYNC] WARNING: No experienceId found. Add WHOP_EXPERIENCE_ID to your environment variables.`);
+        }
 
-            // FINAL SYNC TO DATABASE
+        // FINAL SYNC TO DATABASE
+        try {
             if (hasProAccess) {
                 if (!dbUser.isPro) {
                     console.log(`[DB] SUCCESS: Upgrading ${whopUser.username} to Pro.`);
