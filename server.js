@@ -82,80 +82,32 @@ app.get('/api/whop/me', async (req, res) => {
             }
         }
 
-        // --- ROBUST PRO SYNC (Multi-Path Verification with Plan ID) ---
+        // --- PRO SYNC using SDK checkAccess (no special permissions required) ---
         const companyId = process.env.WHOP_COMPANY_ID;
-        const planIdEnv = process.env.WHOP_PLAN_ID;
-        const apiKey = process.env.WHOP_API_KEY;
 
         console.log(`[SYNC] --- START --- User: ${whopUser.username} (${userId})`);
-        console.log(`[SYNC] Config: CompanyID=${companyId || 'MISSING'}, PlanID=${planIdEnv || 'MISSING'}`);
+        console.log(`[SYNC] Config: CompanyID=${companyId || 'MISSING'}`);
 
         try {
             let hasProAccess = false;
 
-            if (apiKey && companyId) {
-                // 1. DYNAMICALLY FIND PLANS & VERIFY CONFIG
-                console.log(`[SYNC] Step 1: Checking Plans...`);
-                const plansRes = await fetch(`https://api.whop.com/api/v1/plans?company_id=${companyId}`, {
-                    headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' }
-                });
+            if (companyId) {
+                // Use SDK's checkAccess with company ID - this checks if user has paid access
+                console.log(`[SYNC] Checking access to company: ${companyId}`);
+                try {
+                    const accessResult = await whopClient.users.checkAccess(companyId, { id: userId });
+                    console.log(`[SYNC] Access result: has_access=${accessResult.has_access}, level=${accessResult.access_level}`);
 
-                if (plansRes.ok) {
-                    const plansData = await plansRes.json();
-                    const allPlans = plansData.data || [];
-                    console.log(`[SYNC] Total Plans for Company: ${allPlans.length}`);
-                    allPlans.forEach(p => {
-                        console.log(`[SYNC] Found Plan: ID=${p.id}, Name=${p.name}`);
-                    });
-                }
-
-                // 2. CHECK MEMBERSHIPS (Exhaustive Trace)
-                console.log(`[SYNC] Step 2: Checking Memberships for User...`);
-                const mUrl = new URL('https://api.whop.com/api/v1/memberships');
-                mUrl.searchParams.append('user_id', userId);
-                mUrl.searchParams.append('company_id', companyId);
-                // We'll fetch all memberships (not just active) to see what's happening
-
-                const mRes = await fetch(mUrl, {
-                    headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' }
-                });
-
-                if (mRes.ok) {
-                    const mData = await mRes.json();
-                    const memberships = mData.data || [];
-                    console.log(`[SYNC] Total Memberships Found: ${memberships.length}`);
-
-                    memberships.forEach(m => {
-                        const isActive = (m.status === 'active' || m.status === 'trialing' || m.status === 'completed');
-                        const isTargetPlan = (m.plan_id === planIdEnv);
-                        console.log(`[SYNC] Memb: ID=${m.id}, Plan=${m.plan_id}, Status=${m.status}, Active=${isActive}, TargetMatched=${isTargetPlan}`);
-
-                        if (isActive && (isTargetPlan || !planIdEnv)) {
-                            hasProAccess = true;
-                        }
-                    });
-                } else {
-                    console.error(`[SYNC] Membership API Error: ${mRes.status} ${await mRes.text()}`);
-                }
-
-                // 3. CHECK MEMBER STATUS (CRM Fallback)
-                if (!hasProAccess) {
-                    console.log(`[SYNC] Step 3: Checking Member CRM...`);
-                    const membersRes = await fetch(`https://api.whop.com/api/v1/companies/${companyId}/members?user_ids[]=${userId}`, {
-                        headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' }
-                    });
-
-                    if (membersRes.ok) {
-                        const membersData = await membersRes.json();
-                        const memberNodes = membersData.data || [];
-                        if (memberNodes.length > 0) {
-                            const member = memberNodes[0];
-                            console.log(`[SYNC] CRM Match Found: Status=${member.status}, Action=${member.most_recent_action}`);
-                            if (member.most_recent_action === 'paid_subscriber' || member.most_recent_action === 'paid_once') {
-                                hasProAccess = true;
-                            }
-                        }
+                    // If user has 'customer' access level, they have an active subscription
+                    if (accessResult.has_access && accessResult.access_level === 'customer') {
+                        hasProAccess = true;
+                        console.log(`[SYNC] SUCCESS: User has customer-level access (Pro)`);
+                    } else if (accessResult.access_level === 'admin') {
+                        hasProAccess = true;
+                        console.log(`[SYNC] SUCCESS: User has admin-level access (Pro)`);
                     }
+                } catch (accessError) {
+                    console.log(`[SYNC] Access check error: ${accessError.message}`);
                 }
             }
 
@@ -169,7 +121,7 @@ app.get('/api/whop/me', async (req, res) => {
                     console.log(`[DB] User ${whopUser.username} verified as Pro.`);
                 }
             } else {
-                console.log(`[SYNC] FAILED: No active Pro status detected for ${whopUser.username}.`);
+                console.log(`[SYNC] No Pro access detected for ${whopUser.username}.`);
             }
         } catch (err) {
             console.error(`[SYNC] CRITICAL ERROR:`, err);
