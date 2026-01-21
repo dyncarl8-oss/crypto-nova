@@ -105,55 +105,77 @@ app.get('/api/whop/me', async (req, res) => {
         // 2. Specific Plan Membership Check (if not already Pro via Team check)
         if (!hasProAccess && planId && companyId) {
             try {
-                console.log(`[SYNC] Checking memberships for plan: ${planId} (Company: ${companyId})`);
+                // Clean input for comparison
+                const targetPlanId = String(planId).trim().replace(/"/g, '').toLowerCase();
+                const targetCompanyId = String(companyId).trim().replace(/"/g, '');
+
+                console.log(`[SYNC] Fetching all memberships for User ${userId} at Company ${targetCompanyId}`);
+                console.log(`[SYNC] Searching for Match with Plan ID: ${targetPlanId}`);
+
+                // Fetch ALL memberships for this user to inspect them manually in logs
                 const membershipIterator = whopClient.memberships.list({
-                    company_id: companyId,
+                    company_id: targetCompanyId,
                     user_ids: [userId],
-                    plan_ids: [planId],
-                    statuses: ['active', 'trialing'], // 'completed' removed to ensure only active subs count
-                    first: 1
+                    first: 50
                 });
 
-                // Check if there's at least one active membership
+                let mCount = 0;
                 for await (const membership of membershipIterator) {
-                    console.log(`[SYNC] VALID: Found ${membership.status} membership (ID: ${membership.id})`);
-                    hasProAccess = true;
-                    break; // One is enough
-                }
+                    mCount++;
+                    const mPlanId = String(membership.plan?.id || "").toLowerCase();
+                    const mStatus = String(membership.status || "").toLowerCase();
+                    const mProdId = String(membership.product?.id || "");
 
-                if (!hasProAccess) {
-                    console.log(`[SYNC] No active/trialing memberships found for the Pro plan.`);
-                }
-            } catch (membershipError) {
-                console.log(`[SYNC] Membership check error: ${membershipError.message}`);
+                    console.log(`[SYNC] Membership #${mCount}: ID=${membership.id} | Plan=${mPlanId} | Status=${mStatus} | Product=${mProdId}`);
 
-                // Fallback: If SDK method fails, try raw API call with company key
-                if (companyId && process.env.WHOP_API_KEY) {
-                    try {
-                        console.log(`[SYNC] Fallback: Trying raw API...`);
-                        const mUrl = new URL('https://api.whop.com/api/v1/memberships');
-                        mUrl.searchParams.append('user_ids[]', userId);
-                        mUrl.searchParams.append('plan_ids[]', planId);
-                        mUrl.searchParams.append('statuses[]', 'active');
-                        mUrl.searchParams.append('statuses[]', 'trialing');
-                        mUrl.searchParams.append('company_id', companyId);
-
-                        const mRes = await fetch(mUrl, {
-                            headers: { 'Authorization': `Bearer ${process.env.WHOP_API_KEY}`, 'Accept': 'application/json' }
-                        });
-
-                        if (mRes.ok) {
-                            const mData = await mRes.json();
-                            if ((mData.data || []).length > 0) {
-                                console.log(`[SYNC] Fallback SUCCESS: Found active membership.`);
-                                hasProAccess = true;
-                            }
+                    if (mPlanId === targetPlanId) {
+                        // Accept active, trialing, or completed (lifetime)
+                        if (['active', 'trialing', 'completed'].includes(mStatus)) {
+                            console.log(`[SYNC] >>> YES! Matching active membership found. <<<`);
+                            hasProAccess = true;
+                            break;
+                        } else {
+                            console.log(`[SYNC] Plan matched but status "${mStatus}" is NOT considered active Pro.`);
                         }
-                    } catch (fallbackError) {
-                        console.log(`[SYNC] Fallback catch: ${fallbackError.message}`);
                     }
                 }
+
+                if (mCount === 0) {
+                    console.log(`[SYNC] No memberships found for this user/company combination in Whop.`);
+                } else if (!hasProAccess) {
+                    console.log(`[SYNC] Scanned ${mCount} memberships, but none were for the active Pro plan ${targetPlanId}.`);
+                }
+            } catch (err) {
+                console.log(`[SYNC] Membership SDK Error: ${err.message}`);
+
+                // Fallback: Raw API fetch if SDK fails
+                try {
+                    console.log(`[SYNC] Trying raw API fallback...`);
+                    const response = await fetch(`https://api.whop.com/api/v1/memberships?company_id=${companyId}&user_ids[]=${userId}`, {
+                        headers: {
+                            'Authorization': `Bearer ${process.env.WHOP_API_KEY}`,
+                            'Accept': 'application/json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        const memberships = result.data || [];
+                        for (const m of memberships) {
+                            if (String(m.plan?.id || "").toLowerCase() === planId.toLowerCase() &&
+                                ['active', 'trialing', 'completed'].includes(String(m.status || "").toLowerCase())) {
+                                hasProAccess = true;
+                                console.log(`[SYNC] Fallback found matching membership.`);
+                                break;
+                            }
+                        }
+                    }
+                } catch (fallbackErr) {
+                    console.log(`[SYNC] Fallback failed: ${fallbackErr.message}`);
+                }
             }
+        } else if (!hasProAccess) {
+            console.log(`[SYNC] Sync skipped: Missing Plan ID or Company ID.`);
         }
 
         // 3. FINAL DATABASE SYNC
