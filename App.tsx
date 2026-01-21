@@ -1195,7 +1195,7 @@ export default function App() {
                       disabled={isCheckoutLoading}
                       className="hidden lg:block px-4 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 rounded-md text-[10px] font-bold text-white hover:opacity-90 hover:scale-105 transition-all shadow-lg shadow-purple-900/20 disabled:opacity-50"
                     >
-                      {isCheckoutLoading ? '...' : 'UPGRADE'}
+                      {isCheckoutLoading ? '...' : 'ACCESS UNLIMITED'}
                     </button>
                   )}
                 </div>
@@ -1371,7 +1371,7 @@ export default function App() {
             <div className="flex items-center justify-between p-4 border-b border-white/5 bg-slate-900/40 shrink-0">
               <h3 className="text-white font-medium flex items-center gap-2">
                 <Zap className="w-4 h-4 text-emerald-400" />
-                Upgrade to Nova Pro
+                Get Unlimited Access
               </h3>
               <button
                 onClick={() => setShowCheckoutModal(false)}

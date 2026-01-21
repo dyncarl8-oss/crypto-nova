@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema({
     username: String,
     credits: {
         type: Number,
-        default: 10,
+        default: 5,
     },
     isPro: {
         type: Boolean,
