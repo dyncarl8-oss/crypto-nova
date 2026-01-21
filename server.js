@@ -2,7 +2,7 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import Whop from '@whop/sdk';
-import { connectDB, User, Analysis, Conversation } from './server/db.js';
+import { connectDB, User, Analysis, Conversation, SessionLog } from './server/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -294,6 +294,158 @@ app.post('/api/history/request', async (req, res) => {
     } catch (error) {
         console.error('[SERVER] History request error:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ========== SESSION LOGGING (Admin Monitoring) ==========
+
+// Start a new session
+app.post('/api/session/start', async (req, res) => {
+    const userToken = req.headers['x-whop-user-token'];
+    const { sessionId } = req.body;
+
+    if (!userToken || !sessionId) {
+        return res.status(400).json({ error: 'Missing token or sessionId' });
+    }
+
+    try {
+        const headers = new Headers();
+        headers.set('x-whop-user-token', String(userToken));
+        const verification = await whopClient.verifyUserToken(headers);
+        const userId = verification.userId;
+
+        const user = await User.findOne({ whopUserId: userId });
+
+        const session = await SessionLog.create({
+            sessionId,
+            whopUserId: userId,
+            username: user?.username || 'unknown',
+            startedAt: new Date(),
+            messages: [],
+            analysisPerformed: [],
+            metadata: {
+                userAgent: req.headers['user-agent'],
+                isPro: user?.isPro || false,
+                creditsUsed: 0
+            }
+        });
+
+        console.log(`[SESSION] Started: ${sessionId} for user ${user?.username}`);
+        res.json({ success: true, sessionId: session.sessionId });
+    } catch (error) {
+        console.error('[SESSION] Start error:', error);
+        res.status(500).json({ error: 'Failed to start session' });
+    }
+});
+
+// Log a message to the session
+app.post('/api/session/log', async (req, res) => {
+    const userToken = req.headers['x-whop-user-token'];
+    const { sessionId, role, content } = req.body;
+
+    if (!userToken || !sessionId || !role || !content) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    try {
+        const headers = new Headers();
+        headers.set('x-whop-user-token', String(userToken));
+        const verification = await whopClient.verifyUserToken(headers);
+        const userId = verification.userId;
+
+        const session = await SessionLog.findOne({ sessionId, whopUserId: userId });
+
+        if (!session) {
+            // Auto-create session if it doesn't exist
+            const user = await User.findOne({ whopUserId: userId });
+            await SessionLog.create({
+                sessionId,
+                whopUserId: userId,
+                username: user?.username || 'unknown',
+                startedAt: new Date(),
+                messages: [{ role, content, timestamp: new Date() }],
+                metadata: {
+                    userAgent: req.headers['user-agent'],
+                    isPro: user?.isPro || false,
+                    creditsUsed: 0
+                }
+            });
+        } else {
+            session.messages.push({ role, content, timestamp: new Date() });
+            await session.save();
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[SESSION] Log error:', error);
+        res.status(500).json({ error: 'Failed to log message' });
+    }
+});
+
+// Log an analysis to the session
+app.post('/api/session/analysis', async (req, res) => {
+    const userToken = req.headers['x-whop-user-token'];
+    const { sessionId, symbol, verdict, confidence } = req.body;
+
+    if (!userToken || !sessionId) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    try {
+        const headers = new Headers();
+        headers.set('x-whop-user-token', String(userToken));
+        const verification = await whopClient.verifyUserToken(headers);
+        const userId = verification.userId;
+
+        const session = await SessionLog.findOne({ sessionId, whopUserId: userId });
+
+        if (session) {
+            session.analysisPerformed.push({
+                symbol,
+                verdict,
+                confidence,
+                timestamp: new Date()
+            });
+            session.metadata.creditsUsed = (session.metadata.creditsUsed || 0) + 1;
+            await session.save();
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[SESSION] Analysis log error:', error);
+        res.status(500).json({ error: 'Failed to log analysis' });
+    }
+});
+
+// End a session
+app.post('/api/session/end', async (req, res) => {
+    const userToken = req.headers['x-whop-user-token'];
+    const { sessionId } = req.body;
+
+    if (!userToken || !sessionId) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    try {
+        const headers = new Headers();
+        headers.set('x-whop-user-token', String(userToken));
+        const verification = await whopClient.verifyUserToken(headers);
+        const userId = verification.userId;
+
+        const session = await SessionLog.findOneAndUpdate(
+            { sessionId, whopUserId: userId },
+            { endedAt: new Date() },
+            { new: true }
+        );
+
+        if (session) {
+            console.log(`[SESSION] Ended: ${sessionId} | Messages: ${session.messages.length} | Analyses: ${session.analysisPerformed.length}`);
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[SESSION] End error:', error);
+        res.status(500).json({ error: 'Failed to end session' });
     }
 });
 

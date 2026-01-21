@@ -51,6 +51,7 @@ export default function App() {
   const nextStartTimeRef = useRef<number>(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const currentModelResponseRef = useRef<string>(''); // Accumulate voice transcription
+  const currentSessionIdRef = useRef<string | null>(null); // For session logging
 
   // Synchronization Ref: Holds the resolve function for the visual animation promise
   const visualCompleteResolverRef = useRef<(() => void) | null>(null);
@@ -63,11 +64,99 @@ export default function App() {
     orbStateRef.current = orbState;
   }, [orbState]);
 
+  // --- SESSION LOGGING HELPERS ---
+  const getWhopToken = () => document.cookie.match(/whop_user_token=([^;]+)/)?.[1] || '';
+
+  const startSession = async () => {
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    currentSessionIdRef.current = sessionId;
+
+    try {
+      await fetch('/api/session/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-whop-user-token': getWhopToken()
+        },
+        body: JSON.stringify({ sessionId })
+      });
+    } catch (e) {
+      console.warn('Failed to start session log:', e);
+    }
+
+    return sessionId;
+  };
+
+  const logMessage = async (role: 'user' | 'ai', content: string) => {
+    if (!currentSessionIdRef.current) return;
+
+    try {
+      await fetch('/api/session/log', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-whop-user-token': getWhopToken()
+        },
+        body: JSON.stringify({
+          sessionId: currentSessionIdRef.current,
+          role,
+          content
+        })
+      });
+    } catch (e) {
+      console.warn('Failed to log message:', e);
+    }
+  };
+
+  const logAnalysis = async (symbol: string, verdict: string, confidence: number) => {
+    if (!currentSessionIdRef.current) return;
+
+    try {
+      await fetch('/api/session/analysis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-whop-user-token': getWhopToken()
+        },
+        body: JSON.stringify({
+          sessionId: currentSessionIdRef.current,
+          symbol,
+          verdict,
+          confidence
+        })
+      });
+    } catch (e) {
+      console.warn('Failed to log analysis:', e);
+    }
+  };
+
+  const endSession = async () => {
+    if (!currentSessionIdRef.current) return;
+
+    try {
+      await fetch('/api/session/end', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-whop-user-token': getWhopToken()
+        },
+        body: JSON.stringify({ sessionId: currentSessionIdRef.current })
+      });
+    } catch (e) {
+      console.warn('Failed to end session:', e);
+    }
+
+    currentSessionIdRef.current = null;
+  };
+
   // --- HELPERS ---
   const addMessage = (role: 'user' | 'ai', text: string) => {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newMessage = { id, role, text, timestamp: Date.now() };
     setMessages(prev => [...prev, newMessage]);
+
+    // Log message to session (for admin monitoring)
+    logMessage(role, text);
   };
 
   const scrollToBottom = () => {
@@ -398,6 +487,9 @@ export default function App() {
         }, 45000);
       });
 
+      // Log analysis to session for admin monitoring
+      logAnalysis(symbol, deepAnalysis.verdict.direction, deepAnalysis.verdict.confidence);
+
       // Return richer data for the AI to speak about
       return {
         price: priceData.price,
@@ -663,6 +755,9 @@ export default function App() {
     setIsMuted(false);
 
     try {
+      // Start session logging for admin monitoring
+      await startSession();
+
       await startAudioStream(selectedDeviceId);
 
       const session = await connectLive();
@@ -689,6 +784,9 @@ export default function App() {
       sessionRef.current.close();
       sessionRef.current = null;
     }
+
+    // End session logging for admin monitoring
+    endSession();
 
     // FULL SESSION RESET
     setIsMicActive(false);

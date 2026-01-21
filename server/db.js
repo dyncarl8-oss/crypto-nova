@@ -97,3 +97,44 @@ const conversationSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 export const Conversation = mongoose.models.Conversation || mongoose.model('Conversation', conversationSchema);
+
+// SessionLog Schema - For admin monitoring of all conversations
+const sessionLogSchema = new mongoose.Schema({
+    sessionId: {
+        type: String,
+        required: true,
+        unique: true,
+        index: true,
+    },
+    whopUserId: {
+        type: String,
+        required: true,
+        index: true,
+    },
+    username: String,
+    startedAt: {
+        type: Date,
+        default: Date.now,
+    },
+    endedAt: Date,
+    messages: [
+        {
+            role: { type: String, enum: ['user', 'ai', 'system'] },
+            content: String,
+            timestamp: { type: Date, default: Date.now }
+        }
+    ],
+    analysisPerformed: [{
+        symbol: String,
+        verdict: String,
+        confidence: Number,
+        timestamp: { type: Date, default: Date.now }
+    }],
+    metadata: {
+        userAgent: String,
+        isPro: Boolean,
+        creditsUsed: { type: Number, default: 0 }
+    }
+}, { timestamps: true });
+
+export const SessionLog = mongoose.models.SessionLog || mongoose.model('SessionLog', sessionLogSchema);
