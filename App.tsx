@@ -165,60 +165,72 @@ export default function App() {
 
   const loadHistoryItem = async (item: any) => {
     try {
+      if (!item) return;
       setIsHistoryLoading(true);
 
       if (item.hType === 'chat') {
-        const formattedMessages = item.messages.map((m: any) => ({
+        const formattedMessages = (item.messages || []).map((m: any) => ({
           id: m._id || `${Date.now()}-${Math.random()}`,
-          role: m.role,
-          text: m.content,
-          timestamp: new Date(m.timestamp).getTime()
+          role: m.role || 'ai',
+          text: m.content || '',
+          timestamp: new Date(m.timestamp || Date.now()).getTime()
         }));
         setMessages(formattedMessages);
         setCurrentConversationId(item._id);
-        setMarketState(null); // Clear active analysis if loading old chat
+        setMarketState(null);
         setHistoryTab('chat');
       } else {
-        // Analysis Restoration
+        // Analysis Restoration - Defensive Structure
+        const restoredSymbol = (item.symbol || 'ID').toUpperCase();
+        const restoredPrice = item.price || 0;
+
         const restoredState: MarketState = {
-          symbol: item.symbol,
+          symbol: restoredSymbol,
+          // Adding status for internal backward compatibility in App.tsx
           status: 'COMPLETE',
           stage: AnalysisStage.COMPLETE,
           timings: { data: 0, technicals: 0, aggregation: 0, ai: 0 },
-          price: item.price,
-          change24h: 0, // We could store this too if needed
+          price: restoredPrice,
+          change24h: 0,
           volume24h: 0,
-          dataPoints: 0,
+          dataPoints: 1,
           candles: [
-            // Dummy start/end candles if we don't store full OHLCV (which we don't in DB right now)
-            // But AnalysisDashboard uses it for Recharts
-            { time: Date.now() - 3600000, close: item.price, volume: 100 }
+            {
+              time: new Date(item.createdAt || Date.now()).getTime(),
+              close: restoredPrice,
+              open: restoredPrice,
+              high: restoredPrice,
+              low: restoredPrice,
+              volume: 0
+            }
           ],
           news: [],
           systemLog: item.systemLog || [`[RESTORED] > ANALYSIS LOADED FROM HISTORY.`],
-          technicals: item.technicals,
-          anchorTechnicals: item.technicals, // Use same if anchor not separate
+          technicals: item.technicals || null,
+          anchorTechnicals: item.technicals || null,
           deepAnalysis: {
-            verdict: item.verdict,
-            thought_process: item.thought_process,
+            verdict: item.verdict || { direction: 'NEUTRAL', confidence: 0, summary: 'Report data missing.' },
+            thought_process: item.thought_process || [],
             observations: item.observations || [],
             risks: item.risks || []
           }
         };
 
-        // Also add the AI response to the chat log
+        // Add AI response to log
         setMessages([{
           id: `restored-${item._id}`,
           role: 'ai',
-          text: item.aiSummary || `Here is the archived analysis for ${item.symbol}. The verdict was ${item.verdict.direction}.`,
-          timestamp: new Date(item.createdAt).getTime()
+          text: item.aiSummary || `${restoredSymbol} diagnostic archive loaded.`,
+          timestamp: new Date(item.createdAt || Date.now()).getTime()
         }]);
 
         setMarketState(restoredState);
-        setHistoryTab('chat'); // Switch to log view to see restored logs
+        setHistoryTab('chat');
+        setIsSystemBusy(false);
+        setOrbState('idle');
       }
-    } catch (e) {
-      console.error("Failed to load history item:", e);
+    } catch (err: any) {
+      console.error("HISTORY_LOAD_ERROR:", err);
     } finally {
       setIsHistoryLoading(false);
     }
