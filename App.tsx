@@ -70,9 +70,10 @@ export default function App() {
   const startSession = async () => {
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     currentSessionIdRef.current = sessionId;
+    console.log(`[SESSION] Starting new session: ${sessionId}`);
 
     try {
-      await fetch('/api/session/start', {
+      const res = await fetch('/api/session/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -80,17 +81,32 @@ export default function App() {
         },
         body: JSON.stringify({ sessionId })
       });
+      if (res.ok) {
+        console.log(`[SESSION] Session started successfully: ${sessionId}`);
+      } else {
+        console.warn(`[SESSION] Failed to start session on server: ${res.status}`);
+      }
     } catch (e) {
-      console.warn('Failed to start session log:', e);
+      console.warn('[SESSION] Failed to start session log:', e);
     }
 
     return sessionId;
   };
 
   const logMessage = async (role: 'user' | 'ai', content: string) => {
-    if (!currentSessionIdRef.current) return;
+    // Auto-create session if none exists
+    if (!currentSessionIdRef.current) {
+      console.log('[SESSION] Auto-creating session for message logging');
+      await startSession();
+    }
+
+    if (!currentSessionIdRef.current) {
+      console.warn('[SESSION] Still no session ID after creation attempt');
+      return;
+    }
 
     try {
+      console.log(`[SESSION] Logging ${role} message: "${content.slice(0, 50)}..."`);
       await fetch('/api/session/log', {
         method: 'POST',
         headers: {
