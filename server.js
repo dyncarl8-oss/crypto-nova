@@ -78,33 +78,31 @@ app.get('/api/whop/me', async (req, res) => {
         const planId = process.env.WHOP_PLAN_ID;
         const companyId = process.env.WHOP_COMPANY_ID;
 
-        console.log(`[SYNC] --- START --- User: ${whopUser.username} (${userId})`);
+        console.log(`[SYNC] Starting sync for ${whopUser.username} (${userId})`);
         console.log(`[SYNC] Config: PlanID=${planId || 'MISSING'}, CompanyID=${companyId || 'MISSING'}`);
 
         let access = { has_access: true, access_level: 'customer' };
         let hasProAccess = false;
 
-        // Broad access check (to experience) and populate 'access' for frontend
+        // 1. Broad access check (to experience) and team member identification
         if (experienceId) {
             try {
                 console.log(`[SYNC] Checking broad access to experience: ${experienceId}`);
                 const accRes = await whopClient.users.checkAccess(experienceId, { id: userId });
                 access = { has_access: accRes.has_access, access_level: accRes.access_level };
 
-                // Admins are always Pro
+                // Admins/Team members are default Pro
                 if (accRes.access_level === 'admin') {
                     hasProAccess = true;
-                    console.log(`[SYNC] Identified as Admin - granting Pro status.`);
+                    console.log(`[SYNC] Identified as Admin/Team Member - granting Pro status.`);
                 }
             } catch (e) {
-                console.log('[SERVER] Broad access check fail:', e.message);
-                // Default to true/customer to allow app to load if check fails but they got an experience ID
+                console.log('[SYNC] broad check error (non-fatal):', e.message);
                 access = { has_access: true, access_level: 'customer' };
             }
         }
 
-        // Method 1: Use SDK memberships.list() to check for active membership on specific plan
-        // Only run if not already marked Pro by admin check
+        // 2. Specific Plan Membership Check (if not already Pro via Team check)
         if (!hasProAccess && planId && companyId) {
             try {
                 console.log(`[SYNC] Checking memberships for plan: ${planId} (Company: ${companyId})`);
@@ -112,19 +110,19 @@ app.get('/api/whop/me', async (req, res) => {
                     company_id: companyId,
                     user_ids: [userId],
                     plan_ids: [planId],
-                    statuses: ['active', 'trialing', 'completed'],
+                    statuses: ['active', 'trialing'], // 'completed' removed to ensure only active subs count
                     first: 1
                 });
 
                 // Check if there's at least one active membership
                 for await (const membership of membershipIterator) {
-                    console.log(`[SYNC] Found active membership: ID=${membership.id}, Status=${membership.status}, Plan=${membership.plan?.id}`);
+                    console.log(`[SYNC] VALID: Found ${membership.status} membership (ID: ${membership.id})`);
                     hasProAccess = true;
                     break; // One is enough
                 }
 
                 if (!hasProAccess) {
-                    console.log(`[SYNC] No active Pro membership found for this plan.`);
+                    console.log(`[SYNC] No active/trialing memberships found for the Pro plan.`);
                 }
             } catch (membershipError) {
                 console.log(`[SYNC] Membership check error: ${membershipError.message}`);
@@ -138,7 +136,6 @@ app.get('/api/whop/me', async (req, res) => {
                         mUrl.searchParams.append('plan_ids[]', planId);
                         mUrl.searchParams.append('statuses[]', 'active');
                         mUrl.searchParams.append('statuses[]', 'trialing');
-                        mUrl.searchParams.append('statuses[]', 'completed');
                         mUrl.searchParams.append('company_id', companyId);
 
                         const mRes = await fetch(mUrl, {
@@ -147,43 +144,40 @@ app.get('/api/whop/me', async (req, res) => {
 
                         if (mRes.ok) {
                             const mData = await mRes.json();
-                            const memberships = mData.data || [];
-                            if (memberships.length > 0) {
-                                console.log(`[SYNC] Fallback found ${memberships.length} active membership(s)`);
+                            if ((mData.data || []).length > 0) {
+                                console.log(`[SYNC] Fallback SUCCESS: Found active membership.`);
                                 hasProAccess = true;
                             }
-                        } else {
-                            console.log(`[SYNC] Fallback API error: ${mRes.status}`);
                         }
                     } catch (fallbackError) {
-                        console.log(`[SYNC] Fallback error: ${fallbackError.message}`);
+                        console.log(`[SYNC] Fallback catch: ${fallbackError.message}`);
                     }
                 }
             }
         }
 
-        // FINAL SYNC TO DATABASE
+        // 3. FINAL DATABASE SYNC
         try {
             if (hasProAccess) {
                 if (!dbUser.isPro) {
-                    console.log(`[DB] SUCCESS: Upgrading ${whopUser.username} to Pro.`);
+                    console.log(`[DB] Upgrading ${whopUser.username} to Pro.`);
                     dbUser.isPro = true;
                     await dbUser.save();
                 } else {
-                    console.log(`[DB] User ${whopUser.username} verified as Pro.`);
+                    console.log(`[DB] ${whopUser.username} verified as Pro.`);
                 }
             } else {
                 // If user was Pro before but no longer has access, downgrade them
                 if (dbUser.isPro) {
-                    console.log(`[DB] User ${whopUser.username} no longer has Pro access, downgrading.`);
+                    console.log(`[DB] User ${whopUser.username} NO LONGER has Pro access. Downgrading in DB.`);
                     dbUser.isPro = false;
                     await dbUser.save();
                 } else {
-                    console.log(`[SYNC] User ${whopUser.username} is not Pro.`);
+                    console.log(`[DB] ${whopUser.username} remains on Free plan.`);
                 }
             }
-        } catch (err) {
-            console.error(`[SYNC] CRITICAL ERROR:`, err);
+        } catch (dbErr) {
+            console.error(`[DB] Fatal sync error:`, dbErr);
         }
         console.log(`[SYNC] --- END ---`);
 
