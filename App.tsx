@@ -52,6 +52,7 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const currentModelResponseRef = useRef<string>(''); // Accumulate voice transcription
   const currentSessionIdRef = useRef<string | null>(null); // For session logging
+  const lastUserTranscriptRef = useRef<string>(''); // Safety net for non-final transcripts
 
   // Synchronization Ref: Holds the resolve function for the visual animation promise
   const visualCompleteResolverRef = useRef<(() => void) | null>(null);
@@ -581,14 +582,29 @@ export default function App() {
 
             // Transcript handling (Input/Output)
             const inputTrans = msg.serverContent?.inputTranscription;
-            if (inputTrans?.text && (inputTrans as any).final) {
-              addMessage('user', inputTrans.text);
+            if (inputTrans?.text) {
+              lastUserTranscriptRef.current = inputTrans.text;
+
+              // Only save if explicitly final
+              if ((inputTrans as any).isFinal || (inputTrans as any).final || (inputTrans as any).endOfTurn) {
+                console.log("[TRANSCRIPT] FINAL USER TEXT:", inputTrans.text);
+                addMessage('user', inputTrans.text);
+                lastUserTranscriptRef.current = ''; // Clear safety net
+              }
             }
 
             const modelTranscript = msg.serverContent?.outputTranscription?.text;
             if (modelTranscript) currentModelResponseRef.current += modelTranscript;
 
             if (msg.serverContent?.turnComplete) {
+              // 1. Flush any pending user transcript (safety net)
+              if (lastUserTranscriptRef.current.trim()) {
+                console.log("[TRANSCRIPT] FLUSHING PENDING USER TEXT:", lastUserTranscriptRef.current);
+                addMessage('user', lastUserTranscriptRef.current);
+                lastUserTranscriptRef.current = '';
+              }
+
+              // 2. Flush model response
               if (currentModelResponseRef.current.trim()) {
                 addMessage('ai', currentModelResponseRef.current.trim());
                 currentModelResponseRef.current = '';
