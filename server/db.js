@@ -31,6 +31,10 @@ const userSchema = new mongoose.Schema({
         type: Date,
         default: Date.now,
     },
+    requestedHistory: {
+        type: Boolean,
+        default: false,
+    },
 }, { timestamps: true });
 
 // Prevent recompilation of model if already exists

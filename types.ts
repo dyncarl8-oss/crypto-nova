@@ -162,6 +162,7 @@ export interface WhopUser {
   profile_picture?: string;
   credits?: number;
   isPro?: boolean;
+  requestedHistory?: boolean;
 }
 
 export interface WhopAccess {

@@ -211,7 +211,8 @@ app.get('/api/whop/me', async (req, res) => {
                 name: whopUser.name || whopUser.username,
                 profile_picture: whopUser.profile_picture?.url,
                 credits: dbUser.credits,
-                isPro: dbUser.isPro
+                isPro: dbUser.isPro,
+                requestedHistory: dbUser.requestedHistory
             },
             access,
             experienceId
@@ -261,6 +262,37 @@ app.post('/api/credits/deduct', async (req, res) => {
 
     } catch (error) {
         console.error('[SERVER] Credit deduction error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Endpoint to request history feature
+app.post('/api/history/request', async (req, res) => {
+    const userToken = req.headers['x-whop-user-token'];
+
+    if (!userToken) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        const headers = new Headers();
+        headers.set('x-whop-user-token', String(userToken));
+        const verification = await whopClient.verifyUserToken(headers);
+        const userId = verification.userId;
+
+        const user = await User.findOne({ whopUserId: userId });
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        user.requestedHistory = true;
+        await user.save();
+
+        console.log(`[DB] User ${user.username} requested history feature.`);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('[SERVER] History request error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

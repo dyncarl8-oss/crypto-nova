@@ -36,9 +36,6 @@ export default function App() {
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [historyTab, setHistoryTab] = useState<'chat' | 'history'>('chat');
-  const [chatHistory, setChatHistory] = useState<any[]>([]);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
-  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
 
   // --- SETTINGS STATE ---
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
@@ -71,11 +68,6 @@ export default function App() {
     const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newMessage = { id, role, text, timestamp: Date.now() };
     setMessages(prev => [...prev, newMessage]);
-
-    // Auto-save message to DB if user is initialized
-    if (whopUser) {
-      saveChatMessage({ role, content: text });
-    }
   };
 
   const scrollToBottom = () => {
@@ -103,79 +95,8 @@ export default function App() {
     }
   }, [marketState?.stage, orbState, isSystemBusy, isMicActive]);
 
-  // --- HISTORY LOGIC ---
-  const fetchChatHistory = async () => {
-    if (!whopUser?.isPro) return;
-    try {
-      setIsHistoryLoading(true);
-      const res = await fetch('/api/chat/history', {
-        headers: {
-          'x-whop-user-token': (document.cookie.match(/whop_user_token=([^;]+)/)?.[1] || '')
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setChatHistory(data.history);
-      }
-    } catch (e) {
-      console.error("Failed to fetch history:", e);
-    } finally {
-      setIsHistoryLoading(false);
-    }
-  };
-
-  const saveChatMessage = async (message: { role: string, content: string }) => {
-    try {
-      const res = await fetch('/api/chat/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-whop-user-token': (document.cookie.match(/whop_user_token=([^;]+)/)?.[1] || '')
-        },
-        body: JSON.stringify({
-          message,
-          conversationId: currentConversationId
-        })
-      });
-      const data = await res.json();
-      if (data.success && !currentConversationId) {
-        setCurrentConversationId(data.conversationId);
-      }
-    } catch (e) {
-      console.error("Failed to save chat:", e);
-    }
-  };
-
-  const loadConversation = async (conv: any) => {
-    try {
-      setIsHistoryLoading(true);
-      // We could fetch specific messages if the history list only returns metadata
-      // For now, let's assume the 'conv' object from history has the messages
-      // (My backend returns the full object in /api/chat/history)
-
-      const formattedMessages = conv.messages.map((m: any) => ({
-        id: m._id || `${Date.now()}-${Math.random()}`,
-        role: m.role,
-        text: m.content,
-        timestamp: new Date(m.timestamp).getTime()
-      }));
-
-      setMessages(formattedMessages);
-      setCurrentConversationId(conv._id);
-      setHistoryTab('chat');
-    } catch (e) {
-      console.error("Failed to load conversation:", e);
-    } finally {
-      setIsHistoryLoading(false);
-    }
-  };
-
-  // Fetch history when tab changes to history
-  useEffect(() => {
-    if (historyTab === 'history') {
-      fetchChatHistory();
-    }
-  }, [historyTab]);
+  // --- HISTORY LOGIC (DISABLED) ---
+  // History feature is currently disabled - placeholder UI is shown instead
 
   // --- DEVICE ENUMERATION ---
   useEffect(() => {
@@ -925,6 +846,23 @@ export default function App() {
     }
   };
 
+  const handleRequestHistory = async () => {
+    if (whopUser?.requestedHistory) return;
+    try {
+      const res = await fetch('/api/history/request', {
+        method: 'POST',
+        headers: {
+          'x-whop-user-token': (document.cookie.match(/whop_user_token=([^;]+)/)?.[1] || '')
+        }
+      });
+      if (res.ok) {
+        setWhopUser(prev => prev ? ({ ...prev, requestedHistory: true }) : null);
+      }
+    } catch (e) {
+      console.error("History request error:", e);
+    }
+  };
+
   // --- RENDER ---
   if (isWhopLoading) {
     return (
@@ -1011,47 +949,29 @@ export default function App() {
                 )}
               </>
             ) : (
-              <div className="space-y-3 h-full">
-                {!whopUser?.isPro ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4">
-                    <div className="w-16 h-16 bg-purple-500/10 rounded-full flex items-center justify-center text-purple-400">
-                      <Zap size={32} className="fill-current" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white mb-2 uppercase tracking-wider">Pro Access</h3>
-                      <p className="text-[10px] text-slate-500 leading-relaxed">Persistent chat and analysis history are exclusive to Nova Pro members.</p>
-                    </div>
-                    <button
-                      onClick={handleUpgradeClick}
-                      className="w-full py-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg text-[10px] font-bold text-white shadow-lg"
-                    >
-                      UPGRADE TO UNLOCK
-                    </button>
-                  </div>
-                ) : isHistoryLoading ? (
-                  <div className="h-full flex items-center justify-center">
-                    <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
-                  </div>
-                ) : chatHistory.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-2 opacity-50">
-                    <History size={24} />
-                    <p>No history found...</p>
-                  </div>
-                ) : (
-                  chatHistory.map((chat, idx) => (
-                    <div
-                      key={chat._id}
-                      onClick={() => loadConversation(chat)}
-                      className="p-3 rounded-lg bg-slate-900/40 border border-slate-800 hover:border-purple-500/50 cursor-pointer transition-all group"
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Session {chatHistory.length - idx}</span>
-                        <span className="text-[9px] text-slate-600">{new Date(chat.lastMessageAt).toLocaleDateString()}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-300 line-clamp-1 group-hover:text-purple-300 transition-colors">{chat.title}</p>
-                    </div>
-                  ))
-                )}
+              <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-6 animate-in fade-in duration-700">
+                <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-400">
+                  <History size={40} className="opacity-50" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-bold text-white uppercase tracking-widest">Protocol Offline</h3>
+                  <p className="text-[10px] text-slate-500 leading-relaxed max-w-[200px] mx-auto font-mono">
+                    Persistence modules are currently undergoing calibration. Historical data retrieval is unavailable.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleRequestHistory}
+                  disabled={whopUser?.requestedHistory}
+                  className={clsx(
+                    "w-full py-3 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all border",
+                    whopUser?.requestedHistory
+                      ? "bg-slate-900/50 border-slate-800 text-slate-500 cursor-default"
+                      : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50"
+                  )}
+                >
+                  {whopUser?.requestedHistory ? "Interest Recorded" : "I want history feature"}
+                </button>
               </div>
             )}
             <div ref={messagesEndRef} />
