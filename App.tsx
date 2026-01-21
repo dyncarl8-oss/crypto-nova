@@ -1055,16 +1055,23 @@ export default function App() {
                     <p>No active logs...</p>
                   </div>
                 )}
-                {messages.filter(m => m.role === 'ai').map(m => (
-                  <div key={m.id} className="flex flex-col gap-1 items-start">
-                    <span className="bg-emerald-950 text-emerald-500 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
-                      NOVA
-                    </span>
-                    <div className="bg-emerald-900/10 border border-emerald-900/30 p-2 rounded-lg max-w-[95%] break-words">
-                      {m.text}
+                {messages.map(m => {
+                  if (m.role !== 'ai') {
+                    // console.log("Hiding user message:", m.text);
+                    return null;
+                  }
+                  return (
+                    <div key={m.id} className="flex flex-col gap-1 items-start animate-in fade-in slide-in-from-left-2 duration-300">
+                      <span className="bg-emerald-950 text-emerald-500 px-2 py-0.5 rounded text-[10px] uppercase font-bold flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        NOVA
+                      </span>
+                      <div className="bg-emerald-900/10 border border-emerald-500/20 p-2.5 rounded-xl rounded-tl-none max-w-[95%] break-words shadow-sm text-emerald-100/90 leading-relaxed">
+                        {m.text}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {isChatThinking && (
                   <div className="flex flex-col items-start gap-1">
                     <span className="bg-emerald-950 text-emerald-500 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
