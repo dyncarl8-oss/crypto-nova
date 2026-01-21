@@ -1049,20 +1049,18 @@ export default function App() {
           <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs custom-scrollbar">
             {historyTab === 'chat' ? (
               <>
-                {messages.length === 0 && (
+                {messages.filter(m => m.role === 'ai').length === 0 && (
                   <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-2 opacity-50">
                     <MessageSquare size={24} />
                     <p>No active logs...</p>
                   </div>
                 )}
-                {messages.map(m => (
-                  <div key={m.id} className={clsx("flex flex-col gap-1", m.role === 'user' ? "items-end" : "items-start")}>
-                    <span className={clsx("px-2 py-0.5 rounded text-[10px] uppercase font-bold",
-                      m.role === 'user' ? "bg-slate-800 text-slate-400" : "bg-emerald-950 text-emerald-500")}>
-                      {m.role === 'user' ? 'USER' : 'NOVA'}
+                {messages.filter(m => m.role === 'ai').map(m => (
+                  <div key={m.id} className="flex flex-col gap-1 items-start">
+                    <span className="bg-emerald-950 text-emerald-500 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
+                      NOVA
                     </span>
-                    <div className={clsx("p-2 rounded-lg max-w-[95%] break-words border",
-                      m.role === 'user' ? "bg-slate-900/50 border-slate-800" : "bg-emerald-900/10 border-emerald-900/30")}>
+                    <div className="bg-emerald-900/10 border border-emerald-900/30 p-2 rounded-lg max-w-[95%] break-words">
                       {m.text}
                     </div>
                   </div>
