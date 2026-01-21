@@ -194,20 +194,19 @@ const ThinkingLoader = ({ symbol }: { symbol?: string }) => {
     );
 }
 
-const TypewriterText = ({ text, delay = 0, onComplete, instant = false }: { text: string, delay?: number, onComplete?: () => void, instant?: boolean }) => {
-    const [visibleChars, setVisibleChars] = useState(instant ? text.length : 0);
-    const [hasStarted, setHasStarted] = useState(instant);
+const TypewriterText = ({ text, delay = 0, onComplete }: { text: string, delay?: number, onComplete?: () => void }) => {
+    const [visibleChars, setVisibleChars] = useState(0);
+    const [hasStarted, setHasStarted] = useState(false);
 
     useEffect(() => {
-        if (instant) return;
         const startTimeout = setTimeout(() => {
             setHasStarted(true);
         }, delay);
         return () => clearTimeout(startTimeout);
-    }, [delay, text, instant]);
+    }, [delay, text]); // Added text to deps for resets
 
     useEffect(() => {
-        if (!hasStarted || instant) return;
+        if (!hasStarted) return;
 
         if (visibleChars < text.length) {
             const speed = Math.max(3, 15 - Math.min(8, text.length / 100));
@@ -220,21 +219,22 @@ const TypewriterText = ({ text, delay = 0, onComplete, instant = false }: { text
         } else {
             onComplete?.();
         }
-    }, [visibleChars, text, hasStarted, onComplete, instant]);
+    }, [visibleChars, text, hasStarted, onComplete]);
 
-    return <span>{text.slice(0, visibleChars)}{visibleChars < text.length && hasStarted && !instant ? <span className="animate-pulse text-purple-400">▍</span> : ''}</span>;
+    return <span>{text.slice(0, visibleChars)}{visibleChars < text.length && hasStarted ? <span className="animate-pulse text-purple-400">▍</span> : ''}</span>;
 };
 
-const ThinkingReveal = ({ steps, onAllComplete, instant = false }: { steps: ThoughtStep[], onAllComplete?: () => void, instant?: boolean }) => {
-    const [currentStepIndex, setCurrentStepIndex] = useState(instant ? steps.length : 0);
+const ThinkingReveal = ({ steps, onAllComplete }: { steps: ThoughtStep[], onAllComplete?: () => void }) => {
+    const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const stepsRef = useRef(steps);
 
     useEffect(() => {
+        // If steps change drastically, reset (not expected in this flow but good safety)
         if (steps !== stepsRef.current) {
             stepsRef.current = steps;
-            setCurrentStepIndex(instant ? steps.length : 0);
+            setCurrentStepIndex(0);
         }
-    }, [steps, instant]);
+    }, [steps]);
 
     useEffect(() => {
         if (currentStepIndex >= steps.length) {
@@ -245,28 +245,29 @@ const ThinkingReveal = ({ steps, onAllComplete, instant = false }: { steps: Thou
     return (
         <div className="space-y-6">
             {steps.map((step, idx) => {
-                if (!instant && idx > currentStepIndex) return null;
+                // Only render steps up to the current one
+                if (idx > currentStepIndex) return null;
 
                 return (
                     <div key={idx} className="relative pl-4 border-l-2 border-slate-800">
+                        {/* Dot indicator */}
                         <div className={clsx("absolute -left-[5px] top-1 w-2 h-2 rounded-full transition-colors duration-300",
-                            !instant && idx === currentStepIndex ? "bg-purple-500 animate-pulse" : "bg-slate-700")}
+                            idx === currentStepIndex ? "bg-purple-500 animate-pulse" : "bg-slate-700")}
                         />
 
                         <span className="text-purple-300 font-bold block mb-1 text-[10px] tracking-wider uppercase">
-                            {idx === currentStepIndex && !instant ? (
-                                <TypewriterText text={`> ${step.header}`} instant={instant} />
+                            {idx === currentStepIndex ? (
+                                <TypewriterText text={`> ${step.header}`} />
                             ) : (
                                 `> ${step.header}`
                             )}
                         </span>
                         <div className="text-slate-400 font-light leading-relaxed">
-                            {idx === currentStepIndex && !instant ? (
+                            {idx === currentStepIndex ? (
                                 <TypewriterText
                                     text={step.content}
-                                    delay={400}
+                                    delay={400} // Wait a bit after header
                                     onComplete={() => setCurrentStepIndex(prev => prev + 1)}
-                                    instant={instant}
                                 />
                             ) : (
                                 step.content
@@ -354,7 +355,7 @@ const AnalysisStep = ({
 // --- MAIN COMPONENT ---
 
 const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
-    const [aiThoughtsComplete, setAiThoughtsComplete] = useState(data?.isRestored || false);
+    const [aiThoughtsComplete, setAiThoughtsComplete] = useState(false);
 
     if (!data || data.stage === AnalysisStage.IDLE) return null;
 
@@ -395,23 +396,17 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
             {/* HEADER & DIAGNOSTICS */}
             <div className="mb-8 flex items-center justify-between py-4 border-b border-slate-800/50">
                 <div>
-                    <h1 className="text-2xl font-light tracking-wider text-white">
-                        {data.isRestored ? 'HISTORICAL REPORT' : 'LIVE ANALYSIS'}
-                    </h1>
-                    <p className="text-slate-500 text-xs mt-1">
-                        {data.isRestored ? 'Archived System Snapshot' : 'AI-Driven Market Intelligence'} • {data.symbol}
-                    </p>
+                    <h1 className="text-2xl font-light tracking-wider text-white">LIVE ANALYSIS</h1>
+                    <p className="text-slate-500 text-xs mt-1">AI-Driven Market Intelligence • {data.symbol}</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className={clsx("w-2 h-2 rounded-full",
-                        data.isRestored ? "bg-purple-500" :
-                            stage === AnalysisStage.COMPLETE ? "bg-slate-500" :
-                                stage === AnalysisStage.ERROR ? "bg-red-500" : "bg-emerald-500 animate-pulse")} />
+                        stage === AnalysisStage.COMPLETE ? "bg-slate-500" :
+                            stage === AnalysisStage.ERROR ? "bg-red-500" : "bg-emerald-500 animate-pulse")} />
                     <span className={clsx("text-xs font-mono",
-                        data.isRestored ? "text-purple-400" :
-                            stage === AnalysisStage.COMPLETE ? "text-slate-500" :
-                                stage === AnalysisStage.ERROR ? "text-red-500" : "text-emerald-500")}>
-                        {data.isRestored ? 'ARCHIVED' : stage === AnalysisStage.COMPLETE ? 'COMPLETE' : stage === AnalysisStage.ERROR ? 'FAILED' : 'PROCESSING'}
+                        stage === AnalysisStage.COMPLETE ? "text-slate-500" :
+                            stage === AnalysisStage.ERROR ? "text-red-500" : "text-emerald-500")}>
+                        {stage === AnalysisStage.COMPLETE ? 'COMPLETE' : stage === AnalysisStage.ERROR ? 'FAILED' : 'PROCESSING'}
                     </span>
                 </div>
             </div>
@@ -438,10 +433,10 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
             {/* STEP 1: DATA COLLECTION */}
             <AnalysisStep index={1} title="Data Collection" status={getStatus(AnalysisStage.FETCHING_DATA)}>
                 <div className="grid grid-cols-2 gap-4 bg-slate-900/30 p-4 rounded-xl border border-slate-800/50">
-                    <MetricRow label="Stored Price" value={formatCurrency(price)} color="white" />
-                    <MetricRow label="24h Change" value={formatPct(change24h || 0)} color={(change24h || 0) >= 0 ? "emerald" : "red"} />
-                    <MetricRow label="Volume Snap" value={technicals?.volume?.ratio ? `${technicals.volume.ratio.toFixed(2)}x Avg` : "N/A"} subtext="Relative Volume" />
-                    <MetricRow label="Market Pulse" value={news && news.length > 0 ? `${news.length} Headlines` : data.isRestored ? "Logs Archived" : "Scanning..."} subtext="Social/News Feed" />
+                    <MetricRow label="Current Price" value={formatCurrency(price)} color="white" />
+                    <MetricRow label="24h Change" value={formatPct(change24h)} color={change24h >= 0 ? "emerald" : "red"} />
+                    <MetricRow label="Volume 24h" value={technicals ? `${technicals.volume.ratio.toFixed(2)}x Avg` : "..."} subtext="Relative Volume" />
+                    <MetricRow label="Market Pulse" value={news && news.length > 0 ? `${news.length} Headlines` : "Scanning..."} subtext="Social/News Feed" />
                 </div>
             </AnalysisStep>
 
@@ -453,13 +448,13 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
 
             {/* STEP 3: QUANTITATIVE ANALYSIS */}
             <AnalysisStep index={3} title="Quantitative Analysis" subtitle="Computing 25+ technical indicators" status={getStatus(AnalysisStage.COMPUTING_TECHNICALS)} duration={timings.technicals > 0 ? `${timings.technicals}s` : undefined}>
-                {technicals && technicals.rsi && (
+                {technicals && (
                     <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-3">
-                            <IndicatorCard name="RSI" signal={technicals.rsi.signal} value={technicals.rsi.value?.toFixed(1) || '0.0'} strength={technicals.rsi.strength} subtext="Momentum" />
-                            {technicals.ema && <IndicatorCard name="EMA Trend" signal={technicals.ema.trend} value={technicals.ema.ema12?.toFixed(1) || '0.0'} strength={80} subtext="Fast EMA (12)" />}
-                            {technicals.adx && <IndicatorCard name="ADX Strength" signal={technicals.adx.signal} value={technicals.adx.value?.toFixed(1) || '0.0'} strength={technicals.adx.strength} subtext="Trend Force" />}
-                            {technicals.atr && <IndicatorCard name="ATR Value" signal="NEUTRAL" value={technicals.atr.value?.toFixed(4) || '0.0'} strength={50} subtext="Daily Volatility" />}
+                            <IndicatorCard name="RSI" signal={technicals.rsi.signal} value={technicals.rsi.value.toFixed(1)} strength={technicals.rsi.strength} subtext="Momentum" />
+                            <IndicatorCard name="EMA Trend" signal={technicals.ema.trend} value={technicals.ema.ema12.toFixed(1)} strength={80} subtext="Fast EMA (12)" />
+                            <IndicatorCard name="ADX Strength" signal={technicals.adx.signal} value={technicals.adx.value.toFixed(1)} strength={technicals.adx.strength} subtext="Trend Force" />
+                            <IndicatorCard name="ATR Value" signal="NEUTRAL" value={technicals.atr.value.toFixed(4)} strength={50} subtext="Daily Volatility" />
                         </div>
                     </div>
                 )}
@@ -497,12 +492,12 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                 {technicals && (
                     <div className="bg-slate-900/30 p-4 rounded-xl border border-slate-800/50 space-y-4">
                         <div className="flex justify-between text-sm mb-2">
-                            <span className="text-emerald-400 font-bold">{technicals.summary?.upSignals || 0} UP</span>
-                            <span className="text-slate-500 font-mono">{technicals.summary?.alignment?.toFixed(1) || '0.0'}% Alignment</span>
-                            <span className="text-red-400 font-bold">{technicals.summary?.downSignals || 0} DOWN</span>
+                            <span className="text-emerald-400 font-bold">{technicals.summary.upSignals} UP</span>
+                            <span className="text-slate-500 font-mono">{technicals.summary.alignment.toFixed(1)}% Alignment</span>
+                            <span className="text-red-400 font-bold">{technicals.summary.downSignals} DOWN</span>
                         </div>
                         <div className="flex h-2 rounded-full overflow-hidden w-full bg-slate-800">
-                            <div style={{ width: `${(technicals.summary?.upScore / (technicals.summary?.upScore + technicals.summary?.downScore + 1)) * 100}%` }} className="bg-emerald-500 transition-all duration-1000" />
+                            <div style={{ width: `${(technicals.summary.upScore / (technicals.summary.upScore + technicals.summary.downScore + 1)) * 100}%` }} className="bg-emerald-500 transition-all duration-1000" />
                             <div className="flex-1 bg-red-500 transition-all duration-1000" />
                         </div>
 
@@ -519,7 +514,7 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                         <div className="flex justify-between items-center pt-2 border-t border-slate-800">
                             <span className="text-xs text-slate-500 uppercase tracking-widest">Market Regime</span>
                             <span className="text-sm font-bold text-blue-400 px-3 py-1 bg-blue-500/10 rounded border border-blue-500/20">
-                                {technicals.summary?.regime?.replace('_', ' ') || 'NEUTRAL'}
+                                {technicals.summary.regime.replace('_', ' ')}
                             </span>
                         </div>
                     </div>
@@ -539,7 +534,6 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                     ) : (
                         <ThinkingReveal
                             steps={deepAnalysis.thought_process || []}
-                            instant={data.isRestored}
                             onAllComplete={() => {
                                 setAiThoughtsComplete(true);
                                 onTypingComplete?.();
@@ -607,22 +601,22 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                                     <div className="grid grid-cols-3 gap-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800/50">
                                         <div className="text-center">
                                             <div className="text-[10px] text-slate-500 uppercase">Entry</div>
-                                            <div className="text-sm font-mono text-blue-400">{deepAnalysis.verdict.targets.entry || 'N/A'}</div>
+                                            <div className="text-sm font-mono text-blue-400">{deepAnalysis.verdict.targets.entry}</div>
                                         </div>
                                         <div className="text-center border-l border-slate-800">
                                             <div className="text-[10px] text-slate-500 uppercase">Target</div>
-                                            <div className="text-sm font-mono text-emerald-400">{deepAnalysis.verdict.targets.target || 'N/A'}</div>
+                                            <div className="text-sm font-mono text-emerald-400">{deepAnalysis.verdict.targets.target}</div>
                                         </div>
                                         <div className="text-center border-l border-slate-800">
                                             <div className="text-[10px] text-slate-500 uppercase">Stop</div>
-                                            <div className="text-sm font-mono text-red-400">{deepAnalysis.verdict.targets.stopLoss || 'N/A'}</div>
+                                            <div className="text-sm font-mono text-red-400">{deepAnalysis.verdict.targets.stopLoss}</div>
                                         </div>
                                     </div>
 
                                     {deepAnalysis.verdict.riskReward && (
                                         <div className="flex justify-between items-center px-1">
                                             <span className="text-[10px] text-slate-500 uppercase">Risk:Reward Ratio</span>
-                                            <span className="text-xs font-mono text-white">1:{deepAnalysis.verdict.riskReward.ratio || '0'}</span>
+                                            <span className="text-xs font-mono text-white">1:{deepAnalysis.verdict.riskReward.ratio}</span>
                                         </div>
                                     )}
                                 </div>
