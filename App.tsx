@@ -168,6 +168,11 @@ export default function App() {
       if (!item) return;
       setIsHistoryLoading(true);
 
+      // Stop any active mic session to clear the way for history viewing
+      if (isMicActive) {
+        stopMic();
+      }
+
       if (item.hType === 'chat') {
         const formattedMessages = (item.messages || []).map((m: any) => ({
           id: m._id || `${Date.now()}-${Math.random()}`,
@@ -179,10 +184,24 @@ export default function App() {
         setCurrentConversationId(item._id);
         setMarketState(null);
         setHistoryTab('chat');
+        setShowLog(true);
       } else {
-        // Analysis Restoration - Defensive Structure
+        // --- Analysis Restoration ---
         const restoredSymbol = (item.symbol || 'ID').toUpperCase();
         const restoredPrice = item.price || 0;
+
+        // Ensure all verdict fields are deeply restored
+        const v = item.verdict || {};
+        const restoredVerdict = {
+          direction: v.direction || 'NEUTRAL',
+          confidence: v.confidence || 0,
+          duration: v.duration || 'N/A',
+          summary: v.summary || item.aiSummary || 'Summary not found.',
+          targets: v.targets || undefined,
+          riskReward: v.riskReward || undefined,
+          marketNarrative: v.marketNarrative || undefined,
+          btcCorrelation: v.btcCorrelation || undefined
+        };
 
         const restoredState: MarketState = {
           symbol: restoredSymbol,
@@ -191,8 +210,8 @@ export default function App() {
           isRestored: true,
           timings: { data: 0, technicals: 0, aggregation: 0, ai: 0 },
           price: restoredPrice,
-          change24h: 0,
-          volume24h: 0,
+          change24h: item.change24h || 0,
+          volume24h: item.volume24h || 0,
           dataPoints: 1,
           candles: [
             {
@@ -204,19 +223,19 @@ export default function App() {
               volume: 0
             }
           ],
-          news: [],
+          news: item.news || [],
           systemLog: item.systemLog || [`[RESTORED] > ANALYSIS LOADED FROM HISTORY.`],
           technicals: item.technicals || null,
           anchorTechnicals: item.technicals || null,
           deepAnalysis: {
-            verdict: item.verdict || { direction: 'NEUTRAL', confidence: 0, summary: 'Report data missing.' },
+            verdict: restoredVerdict as any,
             thought_process: item.thought_process || [],
             observations: item.observations || [],
             risks: item.risks || []
           }
         };
 
-        // Restore Chat History from the session if it exists, otherwise just the AI summary
+        // Restore conversation context leading to this analysis
         if (item.messages && item.messages.length > 0) {
           const restoredMessages = item.messages.map((m: any) => ({
             id: m._id || `${Date.now()}-${Math.random()}`,
@@ -229,11 +248,12 @@ export default function App() {
           setMessages([{
             id: `restored-${item._id}`,
             role: 'ai',
-            text: item.aiSummary || `${restoredSymbol} diagnostic archive loaded.`,
+            text: restoredVerdict.summary,
             timestamp: new Date(item.createdAt || Date.now()).getTime()
           }]);
         }
 
+        console.log(`[HISTORY] Restoring Analysis State for ${restoredSymbol}`);
         setMarketState(restoredState);
         setHistoryTab('chat');
         setShowLog(true);
@@ -241,7 +261,7 @@ export default function App() {
         setOrbState('idle');
       }
     } catch (err: any) {
-      console.error("HISTORY_LOAD_ERROR:", err);
+      console.error("HISTORY_LOAD_CRITICAL_ERROR:", err);
     } finally {
       setIsHistoryLoading(false);
     }
@@ -533,7 +553,10 @@ export default function App() {
               aiSummary: deepAnalysis.verdict.summary,
               observations: deepAnalysis.observations,
               risks: deepAnalysis.risks,
-              messages: messages.map(m => ({ role: m.role, content: m.text, timestamp: new Date(m.timestamp) }))
+              messages: messages.map(m => ({ role: m.role, content: m.text, timestamp: new Date(m.timestamp) })),
+              change24h: priceData.change24h,
+              volume24h: (marketState?.candles?.[marketState.candles.length - 1]?.volume) || 0,
+              news: marketState?.news || []
             })
           });
           log("ANALYSIS PERSISTED TO SECURE DATABASE.");

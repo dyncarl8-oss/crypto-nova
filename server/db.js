@@ -58,6 +58,9 @@ const analysisSchema = new mongoose.Schema({
         type: Date,
         default: Date.now,
     },
+    change24h: Number,
+    volume24h: Number,
+    news: [String],
     // Store technicals as a sub-object for record keeping
     technicals: mongoose.Schema.Types.Mixed,
     systemLog: [String],
