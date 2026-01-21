@@ -186,9 +186,9 @@ export default function App() {
 
         const restoredState: MarketState = {
           symbol: restoredSymbol,
-          // Adding status for internal backward compatibility in App.tsx
           status: 'COMPLETE',
           stage: AnalysisStage.COMPLETE,
+          isRestored: true,
           timings: { data: 0, technicals: 0, aggregation: 0, ai: 0 },
           price: restoredPrice,
           change24h: 0,
@@ -216,16 +216,27 @@ export default function App() {
           }
         };
 
-        // Add AI response to log
-        setMessages([{
-          id: `restored-${item._id}`,
-          role: 'ai',
-          text: item.aiSummary || `${restoredSymbol} diagnostic archive loaded.`,
-          timestamp: new Date(item.createdAt || Date.now()).getTime()
-        }]);
+        // Restore Chat History from the session if it exists, otherwise just the AI summary
+        if (item.messages && item.messages.length > 0) {
+          const restoredMessages = item.messages.map((m: any) => ({
+            id: m._id || `${Date.now()}-${Math.random()}`,
+            role: m.role || 'ai',
+            text: m.content || '',
+            timestamp: new Date(m.timestamp || Date.now()).getTime()
+          }));
+          setMessages(restoredMessages);
+        } else {
+          setMessages([{
+            id: `restored-${item._id}`,
+            role: 'ai',
+            text: item.aiSummary || `${restoredSymbol} diagnostic archive loaded.`,
+            timestamp: new Date(item.createdAt || Date.now()).getTime()
+          }]);
+        }
 
         setMarketState(restoredState);
         setHistoryTab('chat');
+        setShowLog(true);
         setIsSystemBusy(false);
         setOrbState('idle');
       }
@@ -521,7 +532,8 @@ export default function App() {
               systemLog: marketState ? [...marketState.systemLog, `[${new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}] > ANALYSIS PERSISTED TO SECURE DATABASE.`] : [],
               aiSummary: deepAnalysis.verdict.summary,
               observations: deepAnalysis.observations,
-              risks: deepAnalysis.risks
+              risks: deepAnalysis.risks,
+              messages: messages.map(m => ({ role: m.role, content: m.text, timestamp: new Date(m.timestamp) }))
             })
           });
           log("ANALYSIS PERSISTED TO SECURE DATABASE.");

@@ -61,7 +61,14 @@ const analysisSchema = new mongoose.Schema({
     // Store technicals as a sub-object for record keeping
     technicals: mongoose.Schema.Types.Mixed,
     systemLog: [String],
-    aiSummary: String
+    aiSummary: String,
+    messages: [
+        {
+            role: String,
+            content: String,
+            timestamp: { type: Date, default: Date.now }
+        }
+    ]
 }, { timestamps: true });
 
 export const Analysis = mongoose.models.Analysis || mongoose.model('Analysis', analysisSchema);

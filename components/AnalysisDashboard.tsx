@@ -194,19 +194,20 @@ const ThinkingLoader = ({ symbol }: { symbol?: string }) => {
     );
 }
 
-const TypewriterText = ({ text, delay = 0, onComplete }: { text: string, delay?: number, onComplete?: () => void }) => {
-    const [visibleChars, setVisibleChars] = useState(0);
-    const [hasStarted, setHasStarted] = useState(false);
+const TypewriterText = ({ text, delay = 0, onComplete, instant = false }: { text: string, delay?: number, onComplete?: () => void, instant?: boolean }) => {
+    const [visibleChars, setVisibleChars] = useState(instant ? text.length : 0);
+    const [hasStarted, setHasStarted] = useState(instant);
 
     useEffect(() => {
+        if (instant) return;
         const startTimeout = setTimeout(() => {
             setHasStarted(true);
         }, delay);
         return () => clearTimeout(startTimeout);
-    }, [delay, text]); // Added text to deps for resets
+    }, [delay, text, instant]);
 
     useEffect(() => {
-        if (!hasStarted) return;
+        if (!hasStarted || instant) return;
 
         if (visibleChars < text.length) {
             const speed = Math.max(3, 15 - Math.min(8, text.length / 100));
@@ -219,22 +220,21 @@ const TypewriterText = ({ text, delay = 0, onComplete }: { text: string, delay?:
         } else {
             onComplete?.();
         }
-    }, [visibleChars, text, hasStarted, onComplete]);
+    }, [visibleChars, text, hasStarted, onComplete, instant]);
 
-    return <span>{text.slice(0, visibleChars)}{visibleChars < text.length && hasStarted ? <span className="animate-pulse text-purple-400">▍</span> : ''}</span>;
+    return <span>{text.slice(0, visibleChars)}{visibleChars < text.length && hasStarted && !instant ? <span className="animate-pulse text-purple-400">▍</span> : ''}</span>;
 };
 
-const ThinkingReveal = ({ steps, onAllComplete }: { steps: ThoughtStep[], onAllComplete?: () => void }) => {
-    const [currentStepIndex, setCurrentStepIndex] = useState(0);
+const ThinkingReveal = ({ steps, onAllComplete, instant = false }: { steps: ThoughtStep[], onAllComplete?: () => void, instant?: boolean }) => {
+    const [currentStepIndex, setCurrentStepIndex] = useState(instant ? steps.length : 0);
     const stepsRef = useRef(steps);
 
     useEffect(() => {
-        // If steps change drastically, reset (not expected in this flow but good safety)
         if (steps !== stepsRef.current) {
             stepsRef.current = steps;
-            setCurrentStepIndex(0);
+            setCurrentStepIndex(instant ? steps.length : 0);
         }
-    }, [steps]);
+    }, [steps, instant]);
 
     useEffect(() => {
         if (currentStepIndex >= steps.length) {
@@ -245,29 +245,28 @@ const ThinkingReveal = ({ steps, onAllComplete }: { steps: ThoughtStep[], onAllC
     return (
         <div className="space-y-6">
             {steps.map((step, idx) => {
-                // Only render steps up to the current one
-                if (idx > currentStepIndex) return null;
+                if (!instant && idx > currentStepIndex) return null;
 
                 return (
                     <div key={idx} className="relative pl-4 border-l-2 border-slate-800">
-                        {/* Dot indicator */}
                         <div className={clsx("absolute -left-[5px] top-1 w-2 h-2 rounded-full transition-colors duration-300",
-                            idx === currentStepIndex ? "bg-purple-500 animate-pulse" : "bg-slate-700")}
+                            !instant && idx === currentStepIndex ? "bg-purple-500 animate-pulse" : "bg-slate-700")}
                         />
 
                         <span className="text-purple-300 font-bold block mb-1 text-[10px] tracking-wider uppercase">
-                            {idx === currentStepIndex ? (
-                                <TypewriterText text={`> ${step.header}`} />
+                            {idx === currentStepIndex && !instant ? (
+                                <TypewriterText text={`> ${step.header}`} instant={instant} />
                             ) : (
                                 `> ${step.header}`
                             )}
                         </span>
                         <div className="text-slate-400 font-light leading-relaxed">
-                            {idx === currentStepIndex ? (
+                            {idx === currentStepIndex && !instant ? (
                                 <TypewriterText
                                     text={step.content}
-                                    delay={400} // Wait a bit after header
+                                    delay={400}
                                     onComplete={() => setCurrentStepIndex(prev => prev + 1)}
+                                    instant={instant}
                                 />
                             ) : (
                                 step.content
@@ -355,7 +354,7 @@ const AnalysisStep = ({
 // --- MAIN COMPONENT ---
 
 const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
-    const [aiThoughtsComplete, setAiThoughtsComplete] = useState(false);
+    const [aiThoughtsComplete, setAiThoughtsComplete] = useState(data?.isRestored || false);
 
     if (!data || data.stage === AnalysisStage.IDLE) return null;
 
@@ -534,6 +533,7 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onTypingComplete }) => {
                     ) : (
                         <ThinkingReveal
                             steps={deepAnalysis.thought_process || []}
+                            instant={data.isRestored}
                             onAllComplete={() => {
                                 setAiThoughtsComplete(true);
                                 onTypingComplete?.();

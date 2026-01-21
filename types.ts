@@ -123,6 +123,7 @@ export interface MarketState {
   anchorTechnicals: TechnicalAnalysis | null;
   deepAnalysis: DeepAnalysisResult | null;
   stage: AnalysisStage;
+  isRestored?: boolean;
   timings: {
     data: number;
     technicals: number;
