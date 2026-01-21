@@ -68,6 +68,12 @@ app.get('/api/whop/me', async (req, res) => {
             await dbUser.save();
         }
 
+        // Get experience ID from multiple sources for the response
+        const referer = req.headers['referer'] || '';
+        const expHeader = req.headers['x-whop-experience-id'] || '';
+        const expMatch = String(referer).match(/experiences\/(exp_[A-Za-z0-9]+)/);
+        const experienceId = expMatch ? expMatch[1] : (expHeader || process.env.WHOP_EXPERIENCE_ID || null);
+
         // --- PRO SYNC: Check for specific paid plan membership ---
         const planId = process.env.WHOP_PLAN_ID;
         const companyId = process.env.WHOP_COMPANY_ID;
@@ -75,13 +81,35 @@ app.get('/api/whop/me', async (req, res) => {
         console.log(`[SYNC] --- START --- User: ${whopUser.username} (${userId})`);
         console.log(`[SYNC] Config: PlanID=${planId || 'MISSING'}, CompanyID=${companyId || 'MISSING'}`);
 
+        let access = { has_access: true, access_level: 'customer' };
         let hasProAccess = false;
 
-        // Method 1: Use SDK memberships.list() to check for active membership on specific plan
-        if (planId) {
+        // Broad access check (to experience) and populate 'access' for frontend
+        if (experienceId) {
             try {
-                console.log(`[SYNC] Checking memberships for plan: ${planId}`);
+                console.log(`[SYNC] Checking broad access to experience: ${experienceId}`);
+                const accRes = await whopClient.users.checkAccess(experienceId, { id: userId });
+                access = { has_access: accRes.has_access, access_level: accRes.access_level };
+
+                // Admins are always Pro
+                if (accRes.access_level === 'admin') {
+                    hasProAccess = true;
+                    console.log(`[SYNC] Identified as Admin - granting Pro status.`);
+                }
+            } catch (e) {
+                console.log('[SERVER] Broad access check fail:', e.message);
+                // Default to true/customer to allow app to load if check fails but they got an experience ID
+                access = { has_access: true, access_level: 'customer' };
+            }
+        }
+
+        // Method 1: Use SDK memberships.list() to check for active membership on specific plan
+        // Only run if not already marked Pro by admin check
+        if (!hasProAccess && planId && companyId) {
+            try {
+                console.log(`[SYNC] Checking memberships for plan: ${planId} (Company: ${companyId})`);
                 const membershipIterator = whopClient.memberships.list({
+                    company_id: companyId,
                     user_ids: [userId],
                     plan_ids: [planId],
                     statuses: ['active', 'trialing', 'completed'],
@@ -132,8 +160,6 @@ app.get('/api/whop/me', async (req, res) => {
                     }
                 }
             }
-        } else {
-            console.log(`[SYNC] WARNING: WHOP_PLAN_ID not set. Cannot determine Pro status.`);
         }
 
         // FINAL SYNC TO DATABASE
