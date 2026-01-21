@@ -268,7 +268,7 @@ app.post('/api/credits/deduct', async (req, res) => {
 // Endpoint to save analysis history
 app.post('/api/analysis/save', async (req, res) => {
     const userToken = req.headers['x-whop-user-token'];
-    const { symbol, price, verdict, technicals, thought_process } = req.body;
+    const { symbol, price, verdict, technicals, thought_process, systemLog, aiSummary, observations, risks } = req.body;
 
     if (!userToken) {
         return res.status(401).json({ error: 'Unauthorized' });
@@ -286,7 +286,11 @@ app.post('/api/analysis/save', async (req, res) => {
             price,
             verdict,
             technicals,
-            thought_process
+            thought_process,
+            systemLog,
+            aiSummary,
+            observations,
+            risks
         });
 
         res.json({ success: true, analysisId: analysis._id });

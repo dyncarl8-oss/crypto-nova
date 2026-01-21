@@ -45,28 +45,23 @@ const analysisSchema = new mongoose.Schema({
     },
     symbol: String,
     price: Number,
-    verdict: {
-        direction: String,
-        confidence: Number,
-        summary: String,
-        targets: {
-            entry: String,
-            stopLoss: String,
-            target: String
-        }
-    },
+    verdict: mongoose.Schema.Types.Mixed,
     thought_process: [
         {
             header: String,
             content: String
         }
     ],
+    observations: [String],
+    risks: [String],
     timestamp: {
         type: Date,
         default: Date.now,
     },
     // Store technicals as a sub-object for record keeping
-    technicals: mongoose.Schema.Types.Mixed
+    technicals: mongoose.Schema.Types.Mixed,
+    systemLog: [String],
+    aiSummary: String
 }, { timestamps: true });
 
 export const Analysis = mongoose.models.Analysis || mongoose.model('Analysis', analysisSchema);

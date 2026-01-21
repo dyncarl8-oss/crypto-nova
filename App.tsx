@@ -36,7 +36,7 @@ export default function App() {
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [historyTab, setHistoryTab] = useState<'chat' | 'history'>('chat');
-  const [chatHistory, setChatHistory] = useState<any[]>([]);
+  const [historyItems, setHistoryItems] = useState<any[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
 
@@ -104,19 +104,37 @@ export default function App() {
   }, [marketState?.stage, orbState, isSystemBusy, isMicActive]);
 
   // --- HISTORY LOGIC ---
-  const fetchChatHistory = async () => {
+  const fetchHistory = async () => {
     if (!whopUser?.isPro) return;
+    const token = document.cookie.match(/whop_user_token=([^;]+)/)?.[1] || '';
+    if (!token) return;
+
     try {
       setIsHistoryLoading(true);
-      const res = await fetch('/api/chat/history', {
-        headers: {
-          'x-whop-user-token': (document.cookie.match(/whop_user_token=([^;]+)/)?.[1] || '')
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setChatHistory(data.history);
+      const [chatRes, analysisRes] = await Promise.all([
+        fetch('/api/chat/history', { headers: { 'x-whop-user-token': token } }),
+        fetch('/api/analysis/history', { headers: { 'x-whop-user-token': token } })
+      ]);
+
+      const chatData = await chatRes.json();
+      const analysisData = await analysisRes.json();
+
+      let merged: any[] = [];
+      if (chatData.success) {
+        merged = [...merged, ...chatData.history.map((c: any) => ({ ...c, hType: 'chat' }))];
       }
+      if (analysisData.success) {
+        merged = [...merged, ...analysisData.history.map((a: any) => ({ ...a, hType: 'analysis' }))];
+      }
+
+      // Sort by combined date
+      merged.sort((a, b) => {
+        const dateA = new Date(a.createdAt || a.timestamp || 0).getTime();
+        const dateB = new Date(b.createdAt || b.timestamp || 0).getTime();
+        return dateB - dateA;
+      });
+
+      setHistoryItems(merged);
     } catch (e) {
       console.error("Failed to fetch history:", e);
     } finally {
@@ -146,25 +164,62 @@ export default function App() {
     }
   };
 
-  const loadConversation = async (conv: any) => {
+  const loadHistoryItem = async (item: any) => {
     try {
       setIsHistoryLoading(true);
-      // We could fetch specific messages if the history list only returns metadata
-      // For now, let's assume the 'conv' object from history has the messages
-      // (My backend returns the full object in /api/chat/history)
 
-      const formattedMessages = conv.messages.map((m: any) => ({
-        id: m._id || `${Date.now()}-${Math.random()}`,
-        role: m.role,
-        text: m.content,
-        timestamp: new Date(m.timestamp).getTime()
-      }));
+      if (item.hType === 'chat') {
+        const formattedMessages = item.messages.map((m: any) => ({
+          id: m._id || `${Date.now()}-${Math.random()}`,
+          role: m.role,
+          text: m.content,
+          timestamp: new Date(m.timestamp).getTime()
+        }));
+        setMessages(formattedMessages);
+        setCurrentConversationId(item._id);
+        setMarketState(null); // Clear active analysis if loading old chat
+        setHistoryTab('chat');
+      } else {
+        // Analysis Restoration
+        const restoredState: MarketState = {
+          symbol: item.symbol,
+          status: 'COMPLETE',
+          stage: AnalysisStage.COMPLETE,
+          timings: { data: 0, technicals: 0, aggregation: 0, ai: 0 },
+          price: item.price,
+          change24h: 0, // We could store this too if needed
+          volume24h: 0,
+          dataPoints: 0,
+          candles: [
+            // Dummy start/end candles if we don't store full OHLCV (which we don't in DB right now)
+            // But AnalysisDashboard uses it for Recharts
+            { time: Date.now() - 3600000, close: item.price, volume: 100 }
+          ],
+          news: [],
+          systemLog: item.systemLog || [`[RESTORED] > ANALYSIS LOADED FROM HISTORY.`],
+          technicals: item.technicals,
+          anchorTechnicals: item.technicals, // Use same if anchor not separate
+          deepAnalysis: {
+            verdict: item.verdict,
+            thought_process: item.thought_process,
+            observations: item.observations || [],
+            risks: item.risks || []
+          }
+        };
 
-      setMessages(formattedMessages);
-      setCurrentConversationId(conv._id);
-      setHistoryTab('chat');
+        // Also add the AI response to the chat log
+        setMessages([{
+          id: `restored-${item._id}`,
+          role: 'ai',
+          text: item.aiSummary || `Here is the archived analysis for ${item.symbol}. The verdict was ${item.verdict.direction}.`,
+          timestamp: new Date(item.createdAt).getTime()
+        }]);
+
+        setMarketState(restoredState);
+        setHistoryTab('chat'); // Switch to log view to see restored logs
+      }
     } catch (e) {
-      console.error("Failed to load conversation:", e);
+      console.error("Failed to load history item:", e);
     } finally {
       setIsHistoryLoading(false);
     }
@@ -173,7 +228,7 @@ export default function App() {
   // Fetch history when tab changes to history
   useEffect(() => {
     if (historyTab === 'history') {
-      fetchChatHistory();
+      fetchHistory();
     }
   }, [historyTab]);
 
@@ -451,7 +506,11 @@ export default function App() {
               price: priceData.price,
               verdict: deepAnalysis.verdict,
               technicals: technicals,
-              thought_process: deepAnalysis.thought_process
+              thought_process: deepAnalysis.thought_process,
+              systemLog: marketState ? [...marketState.systemLog, `[${new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}] > ANALYSIS PERSISTED TO SECURE DATABASE.`] : [],
+              aiSummary: deepAnalysis.verdict.summary,
+              observations: deepAnalysis.observations,
+              risks: deepAnalysis.risks
             })
           });
           log("ANALYSIS PERSISTED TO SECURE DATABASE.");
@@ -1032,23 +1091,70 @@ export default function App() {
                   <div className="h-full flex items-center justify-center">
                     <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
                   </div>
-                ) : chatHistory.length === 0 ? (
+                ) : historyItems.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-2 opacity-50">
                     <History size={24} />
                     <p>No history found...</p>
                   </div>
                 ) : (
-                  chatHistory.map((chat, idx) => (
+                  historyItems.map((item) => (
                     <div
-                      key={chat._id}
-                      onClick={() => loadConversation(chat)}
-                      className="p-3 rounded-lg bg-slate-900/40 border border-slate-800 hover:border-purple-500/50 cursor-pointer transition-all group"
+                      key={item._id}
+                      onClick={() => loadHistoryItem(item)}
+                      className={clsx(
+                        "p-3 rounded-lg border cursor-pointer transition-all group relative overflow-hidden",
+                        item.hType === 'analysis'
+                          ? "bg-emerald-900/5 border-emerald-900/20 hover:border-emerald-500/50"
+                          : "bg-slate-900/40 border-slate-800 hover:border-purple-500/50"
+                      )}
                     >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Session {chatHistory.length - idx}</span>
-                        <span className="text-[9px] text-slate-600">{new Date(chat.lastMessageAt).toLocaleDateString()}</span>
+                      {/* Badge */}
+                      <div className="absolute top-0 right-0 px-2 py-0.5 rounded-bl-lg text-[8px] font-black uppercase tracking-tighter">
+                        {item.hType === 'analysis' ? (
+                          <span className="text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">Analysis</span>
+                        ) : (
+                          <span className="text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded">Chat</span>
+                        )}
                       </div>
-                      <p className="text-[11px] text-slate-300 line-clamp-1 group-hover:text-purple-300 transition-colors">{chat.title}</p>
+
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">
+                          {item.hType === 'analysis' ? 'Diagnostic Report' : 'Comm Link'}
+                        </span>
+                        <span className="text-[9px] text-slate-600 font-mono">
+                          {new Date(item.createdAt || item.timestamp).toLocaleDateString()}
+                        </span>
+                      </div>
+
+                      <div className="flex items-start gap-3">
+                        {item.hType === 'analysis' ? (
+                          <>
+                            <div className={clsx(
+                              "w-10 h-10 rounded flex flex-col items-center justify-center shrink-0 border",
+                              item.verdict?.direction === 'UP' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" :
+                                item.verdict?.direction === 'DOWN' ? "bg-red-500/10 border-red-500/20 text-red-400" : "bg-slate-800 border-slate-700 text-slate-400"
+                            )}>
+                              <span className="text-[10px] font-black leading-none">{item.symbol}</span>
+                              <div className="w-4 h-0.5 bg-current mt-1 opacity-30" />
+                              <span className="text-[7px] font-bold mt-0.5">{item.verdict?.direction}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11px] text-slate-200 font-medium truncate mb-0.5">{item.symbol} Strategic Scan</p>
+                              <p className="text-[9px] text-slate-500 line-clamp-1 italic">Price: ${item.price?.toLocaleString()} • {item.verdict?.confidence}% Conviction</p>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="w-10 h-10 bg-purple-500/10 border border-purple-500/20 rounded-full flex items-center justify-center text-purple-400 shrink-0">
+                              <MessageSquare size={16} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11px] text-slate-200 font-medium truncate mb-0.5">{item.title || 'General Inquiry'}</p>
+                              <p className="text-[9px] text-slate-500 line-clamp-1">{item.messages?.length || 0} secure messages exchange</p>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ))
                 )}
