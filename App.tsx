@@ -107,7 +107,6 @@ export default function App() {
   const fetchHistory = async () => {
     if (!whopUser?.isPro) return;
     const token = document.cookie.match(/whop_user_token=([^;]+)/)?.[1] || '';
-    if (!token) return;
 
     try {
       setIsHistoryLoading(true);
@@ -499,7 +498,7 @@ export default function App() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              // Note: The header 'x-whop-user-token' is automatically handled by the Whop proxy or should be present if in cookie 
+              'x-whop-user-token': (document.cookie.match(/whop_user_token=([^;]+)/)?.[1] || '')
             },
             body: JSON.stringify({
               symbol: symbol.toUpperCase(),
@@ -514,6 +513,7 @@ export default function App() {
             })
           });
           log("ANALYSIS PERSISTED TO SECURE DATABASE.");
+          fetchHistory(); // Refresh history list immediately
         } catch (saveErr) {
           console.error("Failed to save analysis history:", saveErr);
           log("WARNING: FAILED TO PERSIST ANALYSIS DATA.");
